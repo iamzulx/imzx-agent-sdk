@@ -1,0 +1,20 @@
+{
+  "name": "imzx-ts-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --loader ts-node/esm index.ts"
+  },
+  "dependencies": {
+    "@imzx/core-bindings": "file:../../bindings/typescript",
+    "dotenv": "^16.0.0",
+    "zod": "^3.23.0",
+    "pino": "^9.0.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.19.39"
+  }
+}

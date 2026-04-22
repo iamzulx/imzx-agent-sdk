@@ -1,0 +1,36 @@
+[package]
+name = "imzx-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Python Bindings
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# TypeScript/Node.js Bindings
+neon = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+async-trait = "0.1"
+
+# Agent Framework
+rig-core = "0.1"
+
+# Local AI & Vector Math (Phase 4)
+candle-core = "0.10.2"
+candle-nn = "0.10.2"
+candle-transformers = "0.10.2"
+ndarray = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"

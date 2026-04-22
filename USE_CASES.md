@@ -9,7 +9,10 @@ This document provides real-world scenarios for using the imzx Agent SDK.
 Use the `coding` agent persona.
 ```bash
 # Python
-cd imzx/python && python cli.py "Review the changes in this PR for security vulnerabilities" coding
+cd app/python-cli && python main.py "Review the changes in this PR for security vulnerabilities" code-reviewer
+
+# TypeScript
+cd app/typescript-cli && npm start "Review the changes in this PR for security vulnerabilities" code-reviewer
 ```
 
 ### Expected Result
@@ -24,13 +27,17 @@ The agent uses the filesystem tools to read the modified files, analyzes them ag
 1. Create a new persona JSON in `personas/k8s-expert.json`:
    ```json
    {
-     "name": "K8s Expert",
+     "description": "K8s Expert",
      "prompt": "You are a world-class Kubernetes engineer. Provide precise, production-ready YAML and architectural advice."
    }
    ```
 2. Run the agent:
    ```bash
-   cd imzx/python && python cli.py "How do I implement a Blue-Green deployment for a stateful set?" k8s-expert
+   # Python
+   cd app/python-cli && python main.py "How do I implement a Blue-Green deployment for a stateful set?" k8s-expert
+
+   # TypeScript
+   cd app/typescript-cli && npm start "How do I implement a Blue-Green deployment for a stateful set?" k8s-expert
    ```
 
 ### Expected Result
@@ -44,7 +51,11 @@ The agent provides a deep-dive technical explanation and the necessary YAML mani
 ### Setup
 Use the `general-purpose` agent with a prompt focusing on audit.
 ```bash
-cd imzx/python && python cli.py "Audit the README.md against the current file structure and identify any inconsistencies" general-purpose
+# Python
+cd app/python-cli && python main.py "Audit the README.md against the current file structure and identify any inconsistencies" general-purpose
+
+# TypeScript
+cd app/typescript-cli && npm start "Audit the README.md against the current file structure and identify any inconsistencies" general-purpose
 ```
 
 ### Expected Result

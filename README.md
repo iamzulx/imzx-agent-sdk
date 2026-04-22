@@ -1,69 +1,49 @@
-# imzx Agent Framework
+# imzx Agent SDK
 
-A professional-grade, dual-language (TypeScript & Python) framework for building autonomous AI agents using the Claude Agent SDK.
+A high-performance agent framework with a Rust core and Python/TypeScript bindings.
 
-## 🚀 Features
+## 🚀 Architecture
+The project is a high-performance agent framework with a Rust core and Python/TypeScript bindings.
 
-- **Dual-Language Support**: Full implementations in both TypeScript and Python.
-- **Agent Personas**: Dynamic, JSON-based persona management for easy customization.
-- **Robust Tooling**: Real-world filesystem, search, and write capabilities.
-- **CLI Interface**: Easy-to-use command line for interacting with agents.
-- **Production-Ready**: Includes automation scripts, testing suites, and CI/CD examples.
+- **`core/`**: The heart of the system. Implements the Agent State Machine, Tool Registry, and Semantic Memory Management. Uses an estimation-based token pruning system to prevent context overflow.
+- **`bindings/`**: FFI bridge layers. 
+    - Python: Uses **PyO3** for native module integration.
+    - TypeScript: Uses **Neon** for high-speed Node.js bindings.
+- **`app/`**: The orchestrator layer (CLI tools) with integrated security sanitization to prevent path traversal attacks.
+- **`personas/`**: Agent configuration files.
 
-## 🛠️ Getting Started
+## 🛠️ Build Instructions
 
-### Prerequisites
+### Core & Bindings
+Build the Rust core and bindings (recommended on non-Termux environments for full SIMD/BF16 support):
+\`\`\`bash
+# Build TS Bindings
+cd bindings/typescript/core
+cargo build --release
 
-- Node.js (v18+)
-- Python (3.10+)
-- Claude Code CLI installed and configured.
+# Build Python Bindings
+cd bindings/python
+maturin develop
+\`\`\`
 
-### Installation
+### Running the CLI
+\`\`\`bash
+# TypeScript CLI
+cd app/typescript-cli
+npm install
+npm start
 
-Run the unified setup script:
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-### Running Agents
-
-#### TypeScript
-```bash
-cd imzx/typescript && npm start
-```
-
-#### Python
-```bash
-cd imzx/python && python coding.py
-```
+# Python CLI
+cd app/python-cli
+pip install -r requirements.txt
+python main.py
+\`\`\`
 
 ## 📂 Project Structure
+- `core/`: Rust core logic (Source of Truth).
+- `bindings/`: Python and TS bridge layers.
+- `app/`: Application implementations.
+- `personas/`: Agent configuration files.
 
-- `imzx/typescript/`: TypeScript implementation and tests.
-- `imzx/python/`: Python implementation and tests.
-- `imzx/personas/`: JSON files defining agent personas.
-- `imzx/CLAUDE.md`: Project context for Claude Code.
-
-## 🧪 Testing
-
-### TypeScript
-```bash
-cd imzx/typescript && npx vitest run
-```
-
-### Python
-```bash
-cd imzx/python && pytest
-```
-
-## 🛡️ Security & Best Practices
-
-- Uses `execFileNoThrow` to prevent command injection.
-- Implements strict type checking and error handling.
-- Follows the principle of least privilege in tool definitions.
-
-## 🤝 Contributing
-
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## 🛡️ Advanced Memory
+The system implements semantic retrieval using cosine similarity on local embeddings, allowing agents to maintain long-term context across vast conversation histories.

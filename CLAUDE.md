@@ -36,13 +36,15 @@ A dual-language (TypeScript & Python) Claude Agent SDK framework.
   - Use modern Python 3 syntax
   - Use `asyncio` patterns where applicable
 
-## Agent Definitions
+## Security & Robustness
 
-- **Coding Agent**: Specialized in code review. Uses filesystem tools to analyze and suggest improvements.
-- **Basic Agent**: Demonstrates tool integration (e.g., time) and system prompts.
-- **Hello World Agent**: Minimalist example of the SDK.
+- **Input Sanitization**: Always sanitize user-provided strings (e.g., agent names, file paths) using allow-lists to prevent Path Traversal attacks.
+- **Token Management**: When managing memory or context, always use token-based counting (approx. 4 chars per token) rather than raw byte length to prevent context window overflow.
+- **Error Handling**: Ensure all FFI boundaries (Rust $\rightarrow$ JS/Py) handle errors gracefully and update the Agent State to `Error` on failure.
+- **Logging**: Avoid using `println!` for user-sensitive data in the core; use structured logging.
 
-## Environment Setup
+## Coding Standards
+... (rest of the file)
 
 Create a `.env` file in the root directory with your API key:
 `ANTHROPIC_API_KEY=your_api_key_here`
