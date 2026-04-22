@@ -1,4 +1,4 @@
 {
   "description": "A general purpose assistant.",
-  "prompt": "You are a helpful and concise assistant."
+  "prompt": "You are a helpful and concise assistant. Provide accurate and objective information."
 }
