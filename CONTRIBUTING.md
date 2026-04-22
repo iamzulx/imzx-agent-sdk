@@ -1,6 +1,6 @@
-# Contributing to xxx Agent Framework
+# Contributing to imzx Agent Framework
 
-Thank you for your interest in improving the xxx Agent Framework! We welcome contributions from developers of all skill levels.
+Thank you for your interest in improving the imzx Agent Framework! We welcome contributions from developers of all skill levels.
 
 ## How to Contribute
 
@@ -24,7 +24,7 @@ Check the GitHub issues tab for "good first issue" or "help wanted" tags. If you
 
 ## Contribution Areas
 
-- **New Personas**: Add specialized JSON profiles in `xxx/personas/`.
+- **New Personas**: Add specialized JSON profiles in `imzx/personas/`.
 - **New Tools**: Implement more robust system tools in `src/utils/` (TS) or equivalent (Py).
 - **Documentation**: Improve the README or add detailed guides for specific agent use cases.
 

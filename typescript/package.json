@@ -1,12 +1,12 @@
 {
-  "name": "@your-username/xxx-agent",
+  "name": "@your-username/imzx-agent",
   "version": "1.0.0",
   "description": "A professional-grade, dual-language Claude Agent SDK framework.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
   "bin": {
-    "xxx-agent": "./dist/cli.js"
+    "imzx-agent": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

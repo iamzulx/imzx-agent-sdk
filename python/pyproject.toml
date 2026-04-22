@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xxx-agent-py"
+name = "imzx-agent-py"
 version = "1.0.0"
 description = "A professional-grade Claude Agent SDK framework in Python"
 dependencies = [
@@ -11,8 +11,8 @@ dependencies = [
 ]
 requires-python = ">=3.10"
 scripts = {
-    "xxx-agent-py = 'xxx.cli:main'"
+    "imzx-agent-py = 'imzx.cli:main'"
 }
 
 [project.urls]
-"Homepage" = "https://github.com/your-username/xxx"
+"Homepage" = "https://github.com/your-username/imzx"

@@ -2,7 +2,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import process from 'node:process';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/xxx/claude_bridge.py';
+const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py';
 
 async function run() {
   const args = process.argv.slice(2);

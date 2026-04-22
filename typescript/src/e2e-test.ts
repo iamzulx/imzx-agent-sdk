@@ -2,7 +2,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import * as fs from 'node:fs/promises';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/xxx/typescript/node_modules/@anthropic-ai/claude-agent-sdk/bin/claude'; // Approximate path
+const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/typescript/node_modules/@anthropic-ai/claude-agent-sdk/bin/claude'; // Approximate path
 
 async function testIntegration() {
   console.log('🧪 Starting E2E Integration Test...');
@@ -26,7 +26,7 @@ async function testIntegration() {
       console.log('Agent:', message);
     }
 
-    const fixedContent = await fs.readFile('/data/data/com.termux/files/home/projects/xxx/typescript/src/buggy_file.ts', 'utf8');
+    const fixedContent = await fs.readFile('/data/data/com.termux/files/home/projects/imzx/typescript/src/buggy_file.ts', 'utf8');
     if (fixedContent.includes('price * (1 + tax)')) {
       console.log('✅ SUCCESS: The agent fixed the bug!');
     } else {
