@@ -1,0 +1,39 @@
+{
+  "name": "@your-username/xxx-agent",
+  "version": "1.0.0",
+  "description": "A professional-grade, dual-language Claude Agent SDK framework.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "xxx-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node --loader ts-node/esm src/index.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "claude",
+    "agent",
+    "sdk",
+    "typescript",
+    "ai-framework"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "@vitest/ui": "^4.1.5",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.117",
+    "@anthropic-ai/claude-code": "^2.1.117"
+  }
+}
