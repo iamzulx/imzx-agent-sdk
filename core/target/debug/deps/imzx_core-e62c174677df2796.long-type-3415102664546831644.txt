@@ -1,2 +1,0 @@
-for<'a> fn(pyo3::Python<'a>, String, String, String) -> Result<String, PyErr> {wrap_run_agent}
-pyo3::Bound<'_, pyo3::types::PyCFunction>: From<for<'a> fn(pyo3::Python<'a>, String, String, String) -> Result<String, PyErr> {wrap_run_agent}>

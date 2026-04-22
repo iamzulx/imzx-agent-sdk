@@ -1,1 +1,0 @@
-pyo3::Bound<'_, pyo3::types::PyCFunction>: From<fn(String, String, String) -> Result<String, PyErr> {wrap_run_agent}>
