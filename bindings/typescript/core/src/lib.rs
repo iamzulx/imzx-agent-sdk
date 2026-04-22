@@ -1,23 +1,5 @@
-use neon::prelude::*;
-use imzx_core::Agent;
-use once_cell::sync::Lazy;
-use tokio::runtime::Runtime;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AgentState {
-    Idle,
-    Thinking,
-    CallingTool { tool_name: String, args: String },
-    Responding,
-    Error(String),
-}
-
-pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to initialize global Tokio runtime")
-});
+import { Neon } from '@neon-bindings/neon';
+import { Agent, ModelRegistry, AnthropicProvider } from 'imzx-core';
 
 #[neon::wrap]
 pub struct TsAgent {
@@ -27,6 +9,8 @@ pub struct TsAgent {
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("agentNew", ts_agent_new)?;
+    cx.export_function("registerModel", ts_agent_register_model)?;
+    cx.export_function("setModel", ts_agent_set_model)?;
     cx.export_function("agentRun", ts_agent_run)?;
     Ok(())
 }
@@ -47,6 +31,39 @@ fn ts_agent_new(mut cx: FunctionContext) -> JsResult<JsValue> {
     let agent = Agent::new(name, description, prompt);
 
     Ok(TsAgent { inner: agent }.into_js_value(cx))
+}
+
+fn ts_agent_register_model(mut cx: FunctionContext) -> JsResult<()> {
+    let mut ts_agent = cx.argument::<TsAgent>(0)
+        .map_err(|_| neon::Error::new("Missing agent instance"))?;
+    
+    let model_name = cx.argument::<JsString>(1)
+        .map_err(|_| neon::Error::new("Missing model name"))?
+        .to_string(&mut cx);
+    
+    let api_key = cx.argument::<JsString>(2)
+        .map_err(|_| neon::Error::new("Missing api key"))?
+        .to_string(&mut cx);
+
+    let provider = std::sync::Arc::new(AnthropicProvider {
+        api_key,
+        model_name,
+    });
+    
+    ts_agent.inner.llm_registry.register(provider);
+    Ok(())
+}
+
+fn ts_agent_set_model(mut cx: FunctionContext) -> JsResult<()> {
+    let mut ts_agent = cx.argument::<TsAgent>(0)
+        .map_err(|_| neon::Error::new("Missing agent instance"))?;
+    
+    let model_name = cx.argument::<JsString>(1)
+        .map_err(|_| neon::Error::new("Missing model name"))?
+        .to_string(&mut cx);
+        
+    ts_agent.inner.set_model(&model_name);
+    Ok(())
 }
 
 fn ts_agent_run(mut cx: FunctionContext) -> JsResult<JsValue> {

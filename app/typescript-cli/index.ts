@@ -5,6 +5,10 @@ import { z } from 'zod';
 import imzxCore from '@imzx/core-bindings';
 import { logger } from 'pino'; // Assuming logger is available or we use a simple one
 
+// Fix: Use absolute path to personas directory located at the project root
+const BASE_DIR = path.resolve(__dirname, '../../');
+const PERSONA_DIR = process.env.PERSONA_DIR || path.join(BASE_DIR, 'personas');
+
 // Simple logger for CLI
 const log = (msg: string) => console.log(`[imzx] ${msg}`);
 const error = (msg: string) => console.error(`[ERROR] ${msg}`);
@@ -13,8 +17,6 @@ const PersonaSchema = z.object({
   description: z.string(),
   prompt: z.string(),
 });
-
-const PERSONA_DIR = process.env.PERSONA_DIR || './personas';
 
 async function run() {
   const args = process.argv.slice(2);

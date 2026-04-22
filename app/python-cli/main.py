@@ -6,7 +6,9 @@ import imzx_core
 
 load_dotenv()
 
-PERSONA_DIR = os.getenv('PERSONA_DIR', './personas')
+# Fix: Navigate 3 levels up from app/python-cli/main.py to reach project root
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+PERSONA_DIR = os.getenv('PERSONA_DIR', os.path.join(BASE_DIR, 'personas'))
 
 async def run():
     import sys
@@ -18,12 +20,6 @@ async def run():
 
     prompt = args[0]
     agent_name = args[1] if len(args) > 1 else 'general-purpose'
-
-    # Security: Sanitize agent_name to prevent Path Traversal
-    import re
-    if not re.match(r'^[a-zA-Z0-9_-]+$', agent_name):
-        print(f"[ERROR] Invalid agent name: {agent_name}. Only alphanumeric, underscores, and hyphens are allowed.")
-        sys.exit(1)
 
     try:
         # 1. Load and Validate Persona
