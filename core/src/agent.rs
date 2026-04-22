@@ -2,6 +2,7 @@ use std::fmt;
 use crate::tools::ToolRegistry;
 use crate::memory::MemoryManager;
 use crate::embedding::LocalEmbedder;
+use crate::llm::{LlmProvider, AnthropicProvider};
 use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,10 +22,15 @@ pub struct Agent {
     pub tool_registry: ToolRegistry,
     pub memory: MemoryManager,
     pub embedder: Option<LocalEmbedder>,
+    pub llm: Box<dyn LlmProvider>,
 }
 
 impl Agent {
     pub fn new(name: String, description: String, prompt: String) -> Self {
+        // Default to Anthropic provider
+        let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_else(|_| "your_api_key".to_string());
+        let llm = Box::new(AnthropicProvider { api_key });
+
         Self {
             name,
             description,
@@ -33,7 +39,12 @@ impl Agent {
             tool_registry: ToolRegistry::new(),
             memory: MemoryManager::new(),
             embedder: None,
+            llm,
         }
+    }
+
+    pub fn set_llm(&mut self, provider: Box<dyn LlmProvider>) {
+        self.llm = provider;
     }
 
     pub fn set_embedder(&mut self, embedder: LocalEmbedder) {
@@ -64,10 +75,16 @@ impl Agent {
 
         self.state = AgentState::Thinking;
 
-        // Note: In production, integrate a real LLM provider here
-        // For now, we return a structured message indicating the process is ready for LLM integration.
+        // 2. Call real LLM with retrieved context
+        let response = match self.llm.generate(&self.prompt, input, &context).await {
+            Ok(res) => res,
+            Err(e) => {
+                self.state = AgentState::Error(e.to_string());
+                return Err(e);
+            }
+        };
+
         self.state = AgentState::Responding;
-        let response = format!("Agent [{}] processed input. Context length: {}. (LLM Integration Point)", self.name, context.len());
 
         // 3. Update memory with agent's response
         let mut response_embedding = None;

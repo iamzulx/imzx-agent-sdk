@@ -6,7 +6,7 @@ This document provides real-world scenarios for using the imzx Agent SDK.
 **Goal**: Automatically review pull requests for common bugs, style violations, and security vulnerabilities.
 
 ### Setup
-Use the `coding` agent persona.
+Use the `code-reviewer` agent persona.
 ```bash
 # Python
 cd app/python-cli && python main.py "Review the changes in this PR for security vulnerabilities" code-reviewer

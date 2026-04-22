@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use tokenizers::Tokenizer;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MemoryEntry {
@@ -12,13 +13,19 @@ pub struct MemoryEntry {
 pub struct MemoryManager {
     pub history: VecDeque<MemoryEntry>,
     pub max_tokens: usize,
+    pub tokenizer: Tokenizer,
 }
 
 impl MemoryManager {
     pub fn new() -> Self {
+        // Use a lightweight pretrained tokenizer (GPT-2) for consistent token counting
+        let tokenizer = Tokenizer::from_pretrained("gpt2", None)
+            .expect("Failed to load GPT-2 tokenizer");
+
         Self {
             history: VecDeque::new(),
             max_tokens: 4000,
+            tokenizer,
         }
     }
 
@@ -33,15 +40,13 @@ impl MemoryManager {
     }
 
     fn prune_memory(&mut self) {
-        // Estimate tokens: approx 4 characters per token for English.
-        // In a production system, use a real tokenizer (e.g., tiktoken).
-        let mut estimated_tokens = self.history.iter()
-            .map(|m| m.content.len() / 4)
+        let mut current_tokens = self.history.iter()
+            .map(|m| self.tokenizer.encode(m.content.as_str(), true).unwrap().get_ids().len())
             .sum::<usize>();
 
-        while estimated_tokens > self.max_tokens && self.history.len() > 1 {
+        while current_tokens > self.max_tokens && self.history.len() > 1 {
             if let Some(removed) = self.history.pop_front() {
-                estimated_tokens -= removed.content.len() / 4;
+                current_tokens -= self.tokenizer.encode(removed.content.as_str(), true).unwrap().get_ids().len();
             }
         }
     }

@@ -3,10 +3,13 @@
 A high-performance agent framework with a Rust core and Python/TypeScript bindings.
 
 ## 🚀 Architecture
-The project is a high-performance agent framework with a Rust core and Python/TypeScript bindings.
+The project is a professional-grade agent framework designed for maximum performance and scalability.
 
-- **`core/`**: The heart of the system. Implements the Agent State Machine, Tool Registry, and Semantic Memory Management. Uses an estimation-based token pruning system to prevent context overflow.
-- **`bindings/`**: FFI bridge layers. 
+- **`core/`**: The heart of the system. 
+    - **Global Runtime**: Uses a singleton Tokio runtime to minimize FFI overhead.
+    - **Semantic Memory**: Implements a sophisticated memory management system with real tokenization (GPT-2) and cosine similarity for long-term context retrieval.
+    - **LlmProvider**: A trait-based system allowing pluggable LLM providers (currently supports Anthropic via `rig-core`).
+- **`bindings/`**: High-speed FFI bridge layers. 
     - Python: Uses **PyO3** for native module integration.
     - TypeScript: Uses **Neon** for high-speed Node.js bindings.
 - **`app/`**: The orchestrator layer (CLI tools) with integrated security sanitization to prevent path traversal attacks.
@@ -15,7 +18,7 @@ The project is a high-performance agent framework with a Rust core and Python/Ty
 ## 🛠️ Build Instructions
 
 ### Core & Bindings
-Build the Rust core and bindings (recommended on non-Termux environments for full SIMD/BF16 support):
+Build the Rust core and bindings:
 \`\`\`bash
 # Build TS Bindings
 cd bindings/typescript/core
@@ -45,5 +48,7 @@ python main.py
 - `app/`: Application implementations.
 - `personas/`: Agent configuration files.
 
-## 🛡️ Advanced Memory
-The system implements semantic retrieval using cosine similarity on local embeddings, allowing agents to maintain long-term context across vast conversation histories.
+## 🛡️ Production-Ready Features
+- **Real Tokenization**: Accurate token counting to prevent context window overflow.
+- **Non-Blocking Runtime**: Optimized FFI bridge for low-latency responses.
+- **Security Hardened**: Input sanitization for all user-provided parameters.

@@ -1,5 +1,23 @@
 use neon::prelude::*;
 use imzx_core::Agent;
+use once_cell::sync::Lazy;
+use tokio::runtime::Runtime;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AgentState {
+    Idle,
+    Thinking,
+    CallingTool { tool_name: String, args: String },
+    Responding,
+    Error(String),
+}
+
+pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to initialize global Tokio runtime")
+});
 
 #[neon::wrap]
 pub struct TsAgent {
@@ -39,10 +57,7 @@ fn ts_agent_run(mut cx: FunctionContext) -> JsResult<JsValue> {
         .map_err(|_| neon::Error::new("Missing input"))?
         .to_string(&mut cx);
 
-    // Kita butuh runtime tokio untuk menjalankan async Rust di dalam sinkronus Neon
-    let rt = tokio::runtime::Runtime::new().map_err(|e| neon::Error::new(e.to_string()))?;
-
-    let result = rt.block_on(async {
+    let result = RUNTIME.block_on(async {
         ts_agent.inner.run(&input).await
     }).map_err(|e| neon::Error::new(e.to_string()))?;
 

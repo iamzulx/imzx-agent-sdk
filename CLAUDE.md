@@ -39,11 +39,12 @@ A dual-language (TypeScript & Python) Claude Agent SDK framework.
 ## Security & Robustness
 
 - **Input Sanitization**: Always sanitize user-provided strings (e.g., agent names, file paths) using allow-lists to prevent Path Traversal attacks.
-- **Token Management**: When managing memory or context, always use token-based counting (approx. 4 chars per token) rather than raw byte length to prevent context window overflow.
-- **Error Handling**: Ensure all FFI boundaries (Rust $\rightarrow$ JS/Py) handle errors gracefully and update the Agent State to `Error` on failure.
-- **Logging**: Avoid using `println!` for user-sensitive data in the core; use structured logging.
+- **Token Management**: Always use the `Tokenizer` in `MemoryManager` for accurate token counting. Never use raw byte or character lengths.
+- **Runtime Efficiency**: Use the global `RUNTIME` singleton for all async operations in FFI layers to avoid overhead.
+- **LlmProvider Pattern**: When adding new LLM support, implement the `LlmProvider` trait to maintain provider agnosticism.
+- **Error Handling**: Ensure all FFI boundaries handle errors gracefully and update the Agent State to `Error` on failure.
+- **Privacy**: Never use `println!` or `console.log` for user-sensitive data in the core logic.
 
-## Coding Standards
 ... (rest of the file)
 
 Create a `.env` file in the root directory with your API key:
