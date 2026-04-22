@@ -36,7 +36,7 @@ cd imzx/typescript && npm start
 
 #### Python
 ```bash
-cd imzx/python && ./venv/bin/python cli.py "Your prompt here" persona-name
+cd imzx/python && python coding.py
 ```
 
 ## 📂 Project Structure
