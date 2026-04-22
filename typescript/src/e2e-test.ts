@@ -1,8 +1,10 @@
 // E2E Integration Test: Bug Fix Workflow
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import * as fs from 'node:fs/promises';
+import * as dotenv from 'dotenv';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/typescript/node_modules/@anthropic-ai/claude-agent-sdk/bin/claude'; // Approximate path
+dotenv.config();
+const CLAUDE_PATH = process.env.CLAUDE_CODE_PATH || './typescript/node_modules/.bin/claude';
 
 async function testIntegration() {
   console.log('🧪 Starting E2E Integration Test...');
@@ -26,7 +28,7 @@ async function testIntegration() {
       console.log('Agent:', message);
     }
 
-    const fixedContent = await fs.readFile('/data/data/com.termux/files/home/projects/imzx/typescript/src/buggy_file.ts', 'utf8');
+    const fixedContent = await fs.readFile('./typescript/src/buggy_file.ts', 'utf8');
     if (fixedContent.includes('price * (1 + tax)')) {
       console.log('✅ SUCCESS: The agent fixed the bug!');
     } else {

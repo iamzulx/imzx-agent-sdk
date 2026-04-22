@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import process from 'node:process';
+import * as dotenv from 'dotenv';
+import * as fs from 'node:fs/promises';
+import { PersonaSchema } from './imzx/schema.js';
+import { logger } from './imzx/logger.js';
+import { safeResolve } from './utils/safeResolve.js';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py';
+dotenv.config();
+const CLAUDE_PATH = process.env.CLAUDE_BRIDGE_PATH || './claude_bridge.py';
+const PERSONA_DIR = process.env.PERSONA_DIR || './personas';
 
 async function run() {
   const args = process.argv.slice(2);
@@ -14,7 +21,20 @@ async function run() {
   const prompt = args[0];
   const agentName = args[1] || 'general-purpose';
 
-  console.log(`\\n🚀 Querying agent [${agentName}] with prompt: "${prompt}"\\n`);
+  // Load persona from JSON
+  let personaData;
+  try {
+    const personaPath = safeResolve(PERSONA_DIR, `${agentName}.json`);
+    const content = await fs.readFile(personaPath, 'utf8');
+    personaData = JSON.parse(content);
+    // Validate persona using Zod
+    PersonaSchema.parse(personaData);
+  } catch (error) {
+    logger.error(`Persona '${agentName}' not found or invalid in ${PERSONA_DIR}.`);
+    process.exit(1);
+  }
+
+  logger.info(`Querying agent [${agentName}] with prompt: "${prompt}"`);
 
   try {
     const queryStream = await query({
@@ -23,23 +43,19 @@ async function run() {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
         agent: agentName,
         agents: {
-          'general-purpose': {
-            description: 'A general purpose assistant',
-            prompt: 'You are a helpful and concise assistant.',
-          },
-          'code-reviewer': {
-            description: 'Expert code reviewer',
-            prompt: 'You are an expert code reviewer. Analyze code for bugs and security issues.',
+          [agentName]: {
+            description: personaData.description,
+            prompt: personaData.prompt,
           }
         }
       }
     });
 
     for await (const message of queryStream) {
-      process.stdout.write(message + '\\n');
+      logger.info(`Agent Response: ${message}`);
     }
   } catch (error: any) {
-    console.error('Error:', error.message);
+    logger.error(`Error: ${error.message}`);
   }
 }
 

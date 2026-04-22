@@ -1,9 +1,9 @@
 // Coding agent example (Professional Code Reviewer)
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { createFilesystemTools } from './tools/filesystem.js';
-import { createSearchTools } from './tools/search.js';
+import * as dotenv from 'dotenv';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py';
+dotenv.config();
+const CLAUDE_PATH = process.env.CLAUDE_BRIDGE_PATH || './claude_bridge.py';
 
 async function main() {
   // 1. Initialize Tools via Factory Functions

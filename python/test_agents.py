@@ -1,5 +1,7 @@
 import pytest
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), 'examples'))
 from hello import main as hello_main
 from basic import main as basic_main
 

@@ -8,11 +8,15 @@ version = "1.0.0"
 description = "A professional-grade Claude Agent SDK framework in Python"
 dependencies = [
     "claude-agent-sdk",
+    "python-dotenv",
 ]
 requires-python = ">=3.10"
-scripts = {
-    "imzx-agent-py = 'imzx.cli:main'"
-}
+
+[project.scripts]
+imzx-agent-py = "imzx.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.urls]
-"Homepage" = "https://github.com/your-username/imzx"
+"Homepage" = "https://github.com/iamzulx/imzx-agent-sdk"

@@ -1,6 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool } from './types.js';
+import { safeResolve } from '../utils/safeResolve.js';
+
+const PROJECT_ROOT = path.resolve(process.cwd());
 
 export const createFilesystemTools = (): Tool[] => [
   {
@@ -15,7 +18,7 @@ export const createFilesystemTools = (): Tool[] => [
     },
     execute: async ({ path: filePath }) => {
       try {
-        const absolutePath = path.resolve(process.cwd(), filePath);
+        const absolutePath = safeResolve(PROJECT_ROOT, filePath);
         const content = await fs.readFile(absolutePath, 'utf8');
         return { content };
       } catch (error: any) {
@@ -31,12 +34,13 @@ export const createFilesystemTools = (): Tool[] => [
       properties: {
         dir: { type: 'string', description: 'Directory path.', default: '.' },
       },
+      required: ['dir'],
     },
     execute: async ({ dir = '.' }) => {
       try {
-        const absolutePath = path.resolve(process.cwd(), dir);
+        const absolutePath = safeResolve(PROJECT_ROOT, dir);
         const files = await fs.readdir(absolutePath);
-        return { content: files.join('\\n') };
+        return { content: files.join('\n') };
       } catch (error: any) {
         return { content: `Error: ${error.message}` };
       }
@@ -55,7 +59,7 @@ export const createFilesystemTools = (): Tool[] => [
     },
     execute: async ({ path: filePath, content }) => {
       try {
-        const absolutePath = path.resolve(process.cwd(), filePath);
+        const absolutePath = safeResolve(PROJECT_ROOT, filePath);
         await fs.mkdir(path.dirname(absolutePath), { recursive: true });
         await fs.writeFile(absolutePath, content, 'utf8');
         return { content: `Success: Wrote to ${filePath}` };

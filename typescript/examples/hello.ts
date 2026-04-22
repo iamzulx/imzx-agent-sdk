@@ -1,20 +1,23 @@
-// Basic agent with common features
+// Minimal Hello World example
+// Minimal Hello World example
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import * as dotenv from 'dotenv';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py';
+dotenv.config();
+const CLAUDE_PATH = process.env.CLAUDE_BRIDGE_PATH || './claude_bridge.py';
 
 // Simple query example using the functional API
 async function main() {
   try {
     const queryStream = await query({
-      prompt: 'What time is it right now?',
+      prompt: 'Hello! What is your name?',
       options: {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
-        agent: 'time-assistant',
+        agent: 'friendly-assistant',
         agents: {
-          'time-assistant': {
-            description: 'An assistant that can provide the current time.',
-            prompt: 'You are a helpful assistant that can provide the current time.',
+          'friendly-assistant': {
+            description: 'A friendly assistant',
+            prompt: 'You are a friendly assistant.',
           }
         }
       }
