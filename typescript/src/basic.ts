@@ -1,7 +1,7 @@
 // Basic agent with common features
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/xxx/claude_bridge.py';
+const CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py';
 
 // Simple query example using the functional API
 async function main() {

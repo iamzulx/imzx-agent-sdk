@@ -4,7 +4,7 @@ import os
 import subprocess
 from claude_agent_sdk import query
 
-CLAUDE_PATH = '/data/data/com.termux/files/home/projects/xxx/claude_bridge.py'
+CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py'
 
 # --- Tool Implementations ---
 
@@ -28,7 +28,7 @@ def search_code_execute(**kwargs):
     pattern = kwargs.get("pattern")
     try:
         # Use grep for searching
-        result = subprocess.run(['grep', '-r', pattern, '.'],
+        result = subprocess.run(['grep', '-r', '--', pattern, '.'],
                                capture_output=True, text=True)
         if result.returncode == 0:
             return {"content": result.stdout}

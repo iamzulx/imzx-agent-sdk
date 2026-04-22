@@ -2,7 +2,7 @@
 import asyncio
 from claude_agent_sdk import query
 
-CLAUDE_PATH = '/data/data/com.termux/files/home/projects/xxx/claude_bridge.py'
+CLAUDE_PATH = '/data/data/com.termux/files/home/projects/imzx/claude_bridge.py'
 
 # Simple query example using the functional API
 async def main():
