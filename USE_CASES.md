@@ -1,77 +1,61 @@
-# imzx Agent SDK Use Cases
+# 💡 imzx Usage Ideas (Use Cases)
 
-This document provides real-world scenarios for using the imzx Agent SDK.
+Not sure what kind of assistant to create? Here are some ideas for assistants you can build with imzx to help with your daily life or work.
 
-## 🚀 Use Case 1: Automated Code Reviewer
-**Goal**: Automatically review pull requests for common bugs, style violations, and security vulnerabilities.
+---
 
-### Setup
-Use the `code-reviewer` agent persona.
-```bash
-# Python
-cd app/python-cli && python main.py "Review the changes in this PR for security vulnerabilities" code-reviewer
+## 👩‍🏫 1. Learning Assistant (Personal Tutor)
+**Purpose**: Help you learn difficult topics (such as Physics, English, or Coding) with easy-to-understand explanations.
 
-# TypeScript
-cd app/typescript-cli && npm start "Review the changes in this PR for security vulnerabilities" code-reviewer
+**How to create the Persona (`learning.json`):**
+```json
+{
+  "description": "Learning Tutor",
+  "prompt": "You are an expert learning tutor. Use the Feynman Technique: explain complex concepts as if I were a 10-year-old. Provide real-world examples and ask a question at the end to test my understanding."
+}
 ```
-
-### Expected Result
-The agent uses the filesystem tools to read the modified files, analyzes them against security best practices, and provides a detailed report with line-by-line suggestions.
-
----
-
-## 🚀 Use Case 2: Domain-Specific Knowledge Assistant
-**Goal**: Create an agent that is an expert in a specific technical domain (e.g., Kubernetes, AWS, or a proprietary internal API).
-
-### Setup
-1. Create a new persona JSON in `personas/k8s-expert.json`:
-   ```json
-   {
-     "description": "K8s Expert",
-     "prompt": "You are a world-class Kubernetes engineer. Provide precise, production-ready YAML and architectural advice."
-   }
-   ```
-2. Run the agent:
-   ```bash
-   # Python
-   cd app/python-cli && python main.py "How do I implement a Blue-Green deployment for a stateful set?" k8s-expert
-
-   # TypeScript
-   cd app/typescript-cli && npm start "How do I implement a Blue-Green deployment for a stateful set?" k8s-expert
-   ```
-
-### Expected Result
-The agent provides a deep-dive technical explanation and the necessary YAML manifests, tailored to the "K8s Expert" persona.
+**Example Usage:**
+`./venv/bin/python main.py "Explain how a Black Hole works" learning`
 
 ---
 
-## 🚀 Use Case 3: Project Documentation Auditor
-**Goal**: Ensure that the project documentation is consistent with the actual code implementation.
+## ✍️ 2. Writing Editor & Language Corrector
+**Purpose**: Turn rough drafts into professional emails, engaging blog posts, or fix grammatical errors.
 
-### Setup
-Use the `general-purpose` agent with a prompt focusing on audit.
-```bash
-# Python
-cd app/python-cli && python main.py "Audit the README.md against the current file structure and identify any inconsistencies" general-purpose
-
-# TypeScript
-cd app/typescript-cli && npm start "Audit the README.md against the current file structure and identify any inconsistencies" general-purpose
+**How to create the Persona (`editor.json`):**
+```json
+{
+  "description": "Professional Editor",
+  "prompt": "You are a senior language editor. Your task is to fix grammar, improve word choice to make it more elegant, and ensure the tone matches the target audience (Formal/Casual)."
+}
 ```
-
-### Expected Result
-The agent lists all files in the project and compares them to the documentation, flagging missing files or outdated paths.
+**Example Usage:**
+`./venv/bin/python main.py "Please turn this WhatsApp message into a formal email to my boss: 'Boss, I'll be late tomorrow because of a flat tire'" editor`
 
 ---
 
-## 🚀 Use Case 4: High-Performance LLM Routing
-**Goal**: Optimize the cost and latency of agent responses by dynamically routing requests to the most efficient provider.
+## 🛡️ 3. Security & Privacy Consultant
+**Purpose**: Check if a document or text contains sensitive information that should not be shared.
 
-### Setup
-Configure the `WeightedScorer` in the Rust core:
-- **Price-Sensitive**: Set `price_weight: 0.8, latency_weight: 0.2` for background tasks where cost is critical.
-- **Latency-Sensitive**: Set `price_weight: 0.2, latency_weight: 0.8` for real-time interactive agents.
+**How to create the Persona (`security.json`):**
+```json
+{
+  "description": "Privacy Expert",
+  "prompt": "You are a data privacy expert. Analyze the given text and let me know if there is any sensitive data such as email addresses, phone numbers, or passwords that were accidentally included."
+}
+```
+**Example Usage:**
+`./venv/bin/python main.py "Here is the announcement draft: Contact me at 08123456789 or secret@mail.com" security`
 
-### Expected Result
-The routing engine calculates a viability score for each available provider using the formula:
-`Score = (weight_p * (current_p / best_p)) + (weight_l * (current_l / best_l))`
-The request is automatically routed to the provider with the lowest score, ensuring optimal resource utilization without sacrificing performance.
+---
+
+## 💰 4. Smart Budget Management (Cost Efficient)
+**Purpose**: Use the **LLM Routing** feature to get high-quality answers while spending the minimum amount of money.
+
+**How it works:**
+You don't need to create a special persona; simply set the `price_weight` in the main engine (Rust core) to a high value (e.g., 0.8).
+
+**When to use this?**
+- When you want to analyze very long documents (hundreds of pages).
+- When you want to perform large-scale research that doesn't require an instant response.
+- **Result**: You get answers from the most cost-effective AI model, making your API Key balance last longer!
