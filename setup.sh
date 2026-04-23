@@ -49,16 +49,17 @@ cd ../..
 if command -v npm &> /dev/null; then
     echo "Setting up TypeScript environment..."
     cd app/typescript-cli
-    # We use --ignore-scripts to prevent premature build and --legacy-peer-deps to avoid zod version conflicts
-    npm install --ignore-scripts --legacy-peer-deps --quiet
+    npm install --ignore-scripts --quiet
     echo -e "${GREEN}✅ TypeScript CLI dependencies installed.${NC}"
     cd ../..
 
     # Build the Rust-TS bindings
     echo "Building TypeScript bindings..."
     cd bindings/typescript
-    # Again, use --ignore-scripts and --legacy-peer-deps
-    npm install --ignore-scripts --legacy-peer-deps --quiet
+    npm install --ignore-scripts --quiet
+
+    # FIX: Ensure cargo is in the PATH for npx neon build
+    export PATH="$PATH:$(dirname $(command -v cargo))"
     npx neon build
     echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
     cd ../..
