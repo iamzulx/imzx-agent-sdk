@@ -50,7 +50,15 @@ if command -v npm &> /dev/null; then
     echo "Setting up TypeScript environment..."
     cd app/typescript-cli
     npm install --quiet
-    echo -e "${GREEN}✅ TypeScript setup complete.${NC}"
+    echo "✅ TypeScript dependencies installed."
+    cd ../..
+
+    # Build the Rust-TS bindings using npx to ensure neon-cli is found
+    echo "Building TypeScript bindings..."
+    cd bindings/typescript
+    npm install --quiet
+    npx neon build
+    echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
     cd ../..
 else
     echo -e "${YELLOW}⚠️  npm not found. Skipping TypeScript setup.${NC}"
