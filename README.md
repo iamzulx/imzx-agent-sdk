@@ -7,6 +7,7 @@ The project is a professional-grade agent framework designed for maximum perform
 
 - **`core/`**: The heart of the system. 
     - **Global Runtime**: Uses a singleton Tokio runtime to minimize FFI overhead.
+    - **LLM Router**: A high-performance routing engine that optimizes provider selection based on cost (Price) and speed (Latency) using a weighted scoring system.
     - **Semantic Memory**: Implements a sophisticated memory management system with real tokenization (GPT-2) and cosine similarity for long-term context retrieval.
     - **LlmProvider**: A trait-based system allowing pluggable LLM providers (currently supports Anthropic via `rig-core`).
 - **`bindings/`**: High-speed FFI bridge layers. 
@@ -19,7 +20,7 @@ The project is a professional-grade agent framework designed for maximum perform
 
 ### Core & Bindings
 Build the Rust core and bindings:
-\`\`\`bash
+```bash
 # Build TS Bindings
 cd bindings/typescript/core
 cargo build --release
@@ -27,10 +28,10 @@ cargo build --release
 # Build Python Bindings
 cd bindings/python
 maturin develop
-\`\`\`
+```
 
 ### Running the CLI
-\`\`\`bash
+```bash
 # TypeScript CLI
 cd app/typescript-cli
 npm install
@@ -40,7 +41,7 @@ npm start
 cd app/python-cli
 pip install -r requirements.txt
 python main.py
-\`\`\`
+```
 
 ## 📂 Project Structure
 - `core/`: Rust core logic (Source of Truth).
@@ -49,6 +50,7 @@ python main.py
 - `personas/`: Agent configuration files.
 
 ## 🛡️ Production-Ready Features
+- **Intelligent LLM Routing**: Dynamically selects the best model based on real-time performance and cost metrics.
 - **Real Tokenization**: Accurate token counting to prevent context window overflow.
 - **Non-Blocking Runtime**: Optimized FFI bridge for low-latency responses.
-- **Security Hardened**: Input sanitization for all user-provided parameters.
+- **Security Hardened**: Path jailing and input sanitization to prevent path traversal and command injection attacks.

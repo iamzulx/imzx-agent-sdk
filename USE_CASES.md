@@ -60,3 +60,18 @@ cd app/typescript-cli && npm start "Audit the README.md against the current file
 
 ### Expected Result
 The agent lists all files in the project and compares them to the documentation, flagging missing files or outdated paths.
+
+---
+
+## 🚀 Use Case 4: High-Performance LLM Routing
+**Goal**: Optimize the cost and latency of agent responses by dynamically routing requests to the most efficient provider.
+
+### Setup
+Configure the `WeightedScorer` in the Rust core:
+- **Price-Sensitive**: Set `price_weight: 0.8, latency_weight: 0.2` for background tasks where cost is critical.
+- **Latency-Sensitive**: Set `price_weight: 0.2, latency_weight: 0.8` for real-time interactive agents.
+
+### Expected Result
+The routing engine calculates a viability score for each available provider using the formula:
+`Score = (weight_p * (current_p / best_p)) + (weight_l * (current_l / best_l))`
+The request is automatically routed to the provider with the lowest score, ensuring optimal resource utilization without sacrificing performance.
