@@ -49,16 +49,18 @@ cd ../..
 if command -v npm &> /dev/null; then
     echo "Setting up TypeScript environment..."
     cd app/typescript-cli
-    npm install --quiet
-    echo -e "${GREEN}✅ TypeScript CLI setup complete.${NC}"
+    # We use --ignore-scripts because the local dependency in bindings/typescript
+    # triggers a 'prepare' script that calls 'neon build' before neon-cli is available.
+    npm install --ignore-scripts --quiet
+    echo -e "${GREEN}✅ TypeScript CLI dependencies installed.${NC}"
     cd ../..
 
     # Build the Rust-TS bindings
     echo "Building TypeScript bindings..."
     cd bindings/typescript
-    # We use --ignore-scripts to prevent the 'prepare' script from running neon build
-    # before the environment is fully ready.
+    # Again, use --ignore-scripts to prevent the automatic build
     npm install --ignore-scripts --quiet
+    # Now we manually run the build using npx to ensure neon-cli is found
     npx neon build
     echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
     cd ../..
