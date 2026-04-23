@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -13,12 +13,14 @@ pub trait LlmProvider: Send + Sync {
 
 pub struct ModelRegistry {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
+    pub metrics: Arc<RwLock<HashMap<String, f32>>>,
 }
 
 impl ModelRegistry {
     pub fn new() -> Self {
         Self {
             providers: HashMap::new(),
+            metrics: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -32,6 +34,21 @@ impl ModelRegistry {
 
     pub fn list(&self) -> Vec<String> {
         self.providers.keys().cloned().collect()
+    }
+
+    pub fn update_latency(&self, name: &str, latency_ms: f32) {
+        if let Ok(mut metrics) = self.metrics.write() {
+            let entry = metrics.entry(name.to_string()).or_insert(latency_ms);
+            // Moving average: 90% old, 10% new
+            *entry = (*entry * 0.9) + (latency_ms * 0.1);
+        }
+    }
+
+    pub fn get_latency(&self, name: &str) -> f32 {
+        self.metrics.read()
+            .ok()
+            .and_then(|m| m.get(name).cloned())
+            .unwrap_or(2000.0) // Default fallback latency
     }
 }
 

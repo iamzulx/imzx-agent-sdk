@@ -7,6 +7,8 @@ use std::fs;
 use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::env;
+use reqwest;
+use scraper::{Html, Selector};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolResult {
@@ -28,7 +30,6 @@ pub struct FileSystemTool {
 
 impl FileSystemTool {
     pub fn new() -> Self {
-        // Default to current working directory as safe root
         Self {
             root_dir: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
@@ -38,13 +39,20 @@ impl FileSystemTool {
         let path = Path::new(user_path);
         let full_path = self.root_dir.join(path);
 
-        // Canonicalize to resolve ".." and symlinks
         let canonical_full = fs::canonicalize(&full_path)
             .map_err(|e| anyhow!("Invalid path: {}. Error: {}", user_path, e))?;
 
-        // Ensure the canonical path still starts with the root_dir
         if !canonical_full.starts_with(&self.root_dir) {
             return Err(anyhow!("Security violation: Path is outside of the allowed directory."));
+        }
+
+        let file_name = canonical_full.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+
+        let protected_files = [".env", ".git", ".claude", "passwd", "shadow"];
+        if protected_files.contains(&file_name) {
+            return Err(anyhow!("Security violation: Access to protected file '{}' is forbidden.", file_name));
         }
 
         Ok(canonical_full)
@@ -92,13 +100,23 @@ pub struct ShellTool;
 #[async_trait]
 impl Tool for ShellTool {
     fn name(&self) -> &str { "shell" }
-    fn description(&self) -> &str { "Execute a shell command. WARNING: This is a powerful tool. Use with caution. Args: '<command>'" }
+    fn description(&self) -> &str { "Execute a specific set of safe shell commands. Args: '<command>'" }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
-        // SECURITY NOTE: Command injection is possible here because we use 'sh -c'.
-        // In a production environment, we should use a restricted shell or an allow-list of commands.
+        let allowed_commands = ["ls", "git status", "git log", "npm test", "cargo build", "cargo check", "cargo run"];
+
+        if !allowed_commands.iter().any(|&cmd| args.trim().starts_with(cmd)) {
+            return Err(anyhow!("Security violation: Command '{}' is not in the allowed list.", args));
+        }
+
+        let forbidden_chars = [';', '&', '|', '>', '<', '$', '(', ')', '`', '\\'];
+        if args.chars().any(|c| forbidden_chars.contains(&c)) {
+            return Err(anyhow!("Security violation: Command contains forbidden characters (potential injection attempt)."));
+        }
+
         let output = Command::new("sh")
             .arg("-c")
+            .env_clear()
             .arg(args)
             .output()?;
 
@@ -144,6 +162,57 @@ impl Tool for WebSearchTool {
     }
 }
 
+pub struct WebScraperTool;
+
+#[async_trait]
+impl Tool for WebScraperTool {
+    fn name(&self) -> &str { "web_scraper" }
+    fn description(&self) -> &str { "Read content from a URL. Args: '<url>'" }
+
+    async fn execute(&self, args: &str) -> Result<ToolResult> {
+        let url = args.trim();
+
+        if url.contains("127.0.0.1") || url.contains("localhost") || url.contains("192.168.") || url.contains("10.") {
+            return Err(anyhow!("Security violation: Access to local/private network is forbidden (SSRF protection)."));
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        let body = client.get(url).send().await?.text().await?;
+        let document = Html::parse_document(&body);
+        let selector = Selector::parse("p, h1, h2, h3").unwrap();
+
+        let mut extracted_text = String::new();
+        for element in document.select(&selector) {
+            extracted_text.push_str(&element.text().collect::<Vec<_>>().join(" "));
+            extracted_text.push('\n');
+        }
+
+        Ok(ToolResult { content: extracted_text.trim().to_string() })
+    }
+}
+
+pub struct DatabaseTool;
+
+#[async_trait]
+impl Tool for DatabaseTool {
+    fn name(&self) -> &str { "database" }
+    fn description(&self) -> &str { "Query the local database. Args: '<query>'. Only SELECT is allowed." }
+
+    async fn execute(&self, args: &str) -> Result<ToolResult> {
+        let query = args.trim();
+
+        let upper_query = query.to_uppercase();
+        if !upper_query.starts_with("SELECT") {
+            return Err(anyhow!("Security violation: Only SELECT queries are allowed."));
+        }
+
+        Ok(ToolResult { content: "Database query executed successfully. (Result simulation)".to_string() })
+    }
+}
+
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }
@@ -158,6 +227,8 @@ impl ToolRegistry {
         registry.register_tool(Arc::new(ShellTool));
         registry.register_tool(Arc::new(CalculatorTool));
         registry.register_tool(Arc::new(WebSearchTool { api_key: None }));
+        registry.register_tool(Arc::new(WebScraperTool));
+        registry.register_tool(Arc::new(DatabaseTool));
 
         registry
     }
