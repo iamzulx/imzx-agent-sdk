@@ -26,7 +26,7 @@ ask_input() {
     eval "$var_name=\"$input\""
 }
 
-# 1. Setup TypeScript/Python environments (the original silent steps)
+# 1. Setup TypeScript/Python environments
 echo -e "\n${BLUE}📦 Installing dependencies...${NC}"
 
 # Check for Python
@@ -50,13 +50,15 @@ if command -v npm &> /dev/null; then
     echo "Setting up TypeScript environment..."
     cd app/typescript-cli
     npm install --quiet
-    echo "✅ TypeScript dependencies installed."
+    echo -e "${GREEN}✅ TypeScript CLI setup complete.${NC}"
     cd ../..
 
-    # Build the Rust-TS bindings using npx to ensure neon-cli is found
+    # Build the Rust-TS bindings
     echo "Building TypeScript bindings..."
     cd bindings/typescript
-    npm install --quiet
+    # We use --ignore-scripts to prevent the 'prepare' script from running neon build
+    # before the environment is fully ready.
+    npm install --ignore-scripts --quiet
     npx neon build
     echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
     cd ../..
