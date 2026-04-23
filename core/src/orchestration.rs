@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrchestrationStrategy {
     Router,       // Heuristic-based model selection
-    Hierarchical, // Manager -> Workers pattern
+    Hierarchical, // Manager-Worker pattern
     Consensus,    // Parallel execution -> Judge synthesis
 }
 
@@ -41,6 +41,15 @@ pub struct FallbackConfig {
     pub priority_list: Vec<String>, // Ordered list of models to try
 }
 
+pub enum ExecutionPlan {
+    Single(Arc<dyn LlmProvider>),
+    Sequence(Vec<Arc<dyn LlmProvider>>), // For Hierarchical (Head -> Workers)
+    Consensus {
+        workers: Vec<Arc<dyn LlmProvider>>,
+        judge: Arc<dyn LlmProvider>,
+    },
+}
+
 pub struct Orchestrator {
     pub strategy: OrchestrationStrategy,
     pub role_map: RoleMap,
@@ -56,11 +65,40 @@ impl Orchestrator {
         }
     }
 
-    /// Selects the appropriate model based on the current strategy and role
-    pub fn select_model(&self, registry: &ModelRegistry, role: AgentRole, context: Option<&str>) -> Result<Arc<dyn LlmProvider>> {
+    pub fn get_execution_plan(&self, registry: &ModelRegistry, role: AgentRole, context: Option<&str>) -> Result<ExecutionPlan> {
         match self.strategy {
-            OrchestrationStrategy::Router => self.route_selection(registry, role, context),
-            _ => self.role_based_selection(registry, role),
+            OrchestrationStrategy::Router => {
+                let provider = self.route_selection(registry, role, context)?;
+                Ok(ExecutionPlan::Single(provider))
+            }
+            OrchestrationStrategy::Hierarchical => {
+                let head = self.role_based_selection(registry, AgentRole::Head)
+                    .ok_or_else(|| anyhow!("Hierarchical strategy requires a Head model"))?;
+
+                let workers = vec![self.role_based_selection(registry, AgentRole::Worker)
+                    .ok_or_else(|| anyhow!("Hierarchical strategy requires a Worker model"))?];
+
+                Ok(ExecutionPlan::Sequence(vec![head, workers[0].clone()]))
+            }
+            OrchestrationStrategy::Consensus => {
+                let judge = self.role_based_selection(registry, AgentRole::Judge)
+                    .ok_or_else(|| anyhow!("Consensus strategy requires a Judge model"))?;
+
+                let mut workers = Vec::new();
+                for role in [AgentRole::Worker] {
+                    if let Some(model_name) = self.role_map.get_model(role) {
+                        if let Some(provider) = registry.get(model_name) {
+                            workers.push(provider);
+                        }
+                    }
+                }
+
+                if workers.is_empty() {
+                    return Err(anyhow!("Consensus strategy requires at least one Worker model"));
+                }
+
+                Ok(ExecutionPlan::Consensus { workers, judge })
+            }
         }
     }
 
@@ -73,15 +111,12 @@ impl Orchestrator {
     }
 
     fn route_selection(&self, registry: &ModelRegistry, role: AgentRole, context: Option<&str>) -> Result<Arc<dyn LlmProvider>> {
-        // If a specific role is assigned, prioritize it
         if let Some(model_name) = self.role_map.get_model(role) {
              if let Some(provider) = registry.get(model_name) {
                  return Ok(provider);
              }
         }
 
-        // Otherwise, use a simple heuristic for "Router" mode
-        // If context is present and long, assume high complexity -> use a "strong" model
         let is_complex = context.map_or(false, |c| c.len() > 500);
 
         if is_complex {
@@ -93,42 +128,8 @@ impl Orchestrator {
             }
         }
 
-        // Fallback to any available model if router fails
         registry.list().first()
             .and_then(|name| registry.get(name))
             .ok_or_else(|| anyhow!("No models available in registry for routing"))
-    }
-
-    /// Handles model selection with fallback logic if a primary model fails (e.g., rate limit)
-    pub async fn execute_with_fallback<F, Fut, T>(
-        &self,
-        registry: &ModelRegistry,
-        role: AgentRole,
-        context: Option<&str>,
-        action: F
-    ) -> Result<T>
-    where
-        F: Fn(Arc<dyn LlmProvider>) -> Fut,
-        Fut: std::future::Future<Output = Result<T>>,
-    {
-        let primary = self.select_model(registry, role, context)?;
-
-        match action(primary).await {
-            Ok(res) => Ok(res),
-            Err(e) if self.fallback.is_some() => {
-                if let Some(ref config) = self.fallback {
-                    for model_name in &config.priority_list {
-                        if let Some(provider) = registry.get(model_name) {
-                            match action(provider).await {
-                                Ok(res) => return Ok(res),
-                                Err(_) => continue,
-                            }
-                        }
-                    }
-                }
-                Err(e)
-            }
-            Err(e) => Err(e),
-        }
     }
 }
