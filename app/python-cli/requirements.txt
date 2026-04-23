@@ -1,0 +1,2 @@
+python-dotenv==1.0.1
+# The imzx_core module is installed via maturin develop during the Rust build process.
