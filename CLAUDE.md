@@ -38,7 +38,8 @@ A dual-language (TypeScript & Python) Claude Agent SDK framework.
 
 ## Security & Robustness
 
-- **Input Sanitization**: Always sanitize user-provided strings (e.g., agent names, file paths) using allow-lists to prevent Path Traversal attacks.
+- **Input Sanitization**: Always sanitize user-provided strings (e.g., agent names, file paths) using allow-lists and `std::fs::canonicalize` to prevent Path Traversal attacks.
+- **Path Jailing**: All filesystem operations must be constrained to the project root using a `root_dir` check.
 - **Token Management**: Always use the `Tokenizer` in `MemoryManager` for accurate token counting. Never use raw byte or character lengths.
 - **Runtime Efficiency**: Use the global `RUNTIME` singleton for all async operations in FFI layers to avoid overhead.
 - **LlmProvider Pattern**: When adding new LLM support, implement the `LlmProvider` trait to maintain provider agnosticism.

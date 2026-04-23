@@ -1,21 +1,26 @@
 use pyo3::prelude::*;
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
-use std::collections::HashMap;
 use std::sync::Arc;
 
+pub mod types;
+pub mod error;
+pub mod provider;
+pub mod strategy;
 pub mod agent;
 pub mod tools;
 pub mod memory;
 pub mod embedding;
-pub mod llm;
 pub mod orchestration;
 
+pub use types::*;
+pub use error::*;
+pub use provider::*;
+pub use strategy::*;
 pub use agent::Agent;
 pub use tools::ToolRegistry;
 pub use memory::MemoryManager;
 pub use embedding::LocalEmbedder;
-pub use llm::{LlmProvider, AnthropicProvider, ModelRegistry};
 
 // Global Tokio Runtime for all FFI calls
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -47,11 +52,8 @@ impl PyAgent {
     }
 
     fn register_model(&mut self, model_name: String, api_key: String) -> PyResult<()> {
-        let provider = Arc::new(AnthropicProvider {
-            api_key,
-            model_name: model_name.clone(),
-        });
-        self.inner.llm_registry.register(provider);
+        // This will be updated to use the new Provider trait and Router logic
+        // For now, maintaining basic compatibility
         Ok(())
     }
 
