@@ -1,34 +1,48 @@
 # imzx Agent Framework Architecture
 
-The `imzx` framework is designed as a dual-language (TypeScript & Python) wrapper around the Claude Agent SDK, providing a structured and production-ready environment for building autonomous agents.
+The `imzx` framework is a production-ready SDK for building autonomous agents. It utilizes a **Clean Architecture (Hexagonal)** pattern to ensure a strict separation between business rules, application logic, and infrastructure.
 
-## Core Components
+## 🏗️ Architectural Overview
 
-### 1. Agent Persona System
-Agents are defined by JSON-based "personas" stored in the `personas/` directory. Each persona contains:
-- `description`: A brief summary of the agent's role.
-- `prompt`: The detailed system prompt that guides the agent's behavior.
+The project is divided into four distinct layers. Dependencies flow only inward: **Interfaces $\rightarrow$ Application $\rightarrow$ Domain $\leftarrow$ Adapters**.
 
-The framework validates these personas at runtime using **Pydantic** (Python) and **Zod** (TypeScript) to ensure they adhere to the required schema.
+### 1. Domain Layer (`/domain`)
+The heart of the system. This layer is completely independent of any external framework or library.
+- **Entities**: Core types like `Persona`.
+- **Ports**: Interface contracts (e.g., `PersonaRepository`, `AgentEnginePort`) that define *what* the system needs without specifying *how* it's done.
+- **Use Cases**: Pure business logic (e.g., `GetPersonaUseCase`) that implements the primary system rules.
 
-### 2. Dual-Language Implementation
-The framework provides near-identical functionality in both TypeScript and Python:
-- **Python implementation** leverages modern Python 3 features and `asyncio` for high-performance, non-blocking agent interaction.
-- **TypeScript implementation** uses ESM and `for await...of` for efficient streaming of agent responses.
+### 2. Application Layer (`/application`)
+The orchestration layer. It coordinates the flow of data between the domain and the infrastructure.
+- **Services**: `AgentService` manages the lifecycle of an agent request, from persona retrieval to final execution.
+- **DTOs**: Data Transfer Objects for clean communication between layers.
 
-### 3. Tool Integration
-Agents are equipped with a set of "tools" (filesystem, search, etc.) that allow them to interact with the real world. The framework follows the principle of least privilege and uses safe execution patterns (like `execFile` in TS and `subprocess.run` with argument lists in Python) to prevent command injection.
+### 3. Adapter Layer (`/adapters`)
+The infrastructure implementation. This layer handles all "dirty" details.
+- **Persistence**: `FilePersonaRepository` implements the `PersonaRepository` port using the local filesystem.
+- **External**: `RustBindingsAdapter` implements the `AgentEnginePort` by bridging to the high-performance Rust core via FFI.
+- **Logging**: Integration with `pino` for structured observability.
 
-### 4. Observability & Logging
-Professional-grade logging is integrated throughout the framework using:
-- **Python**: The standard `logging` module.
-- **TypeScript**: `pino`, a high-performance logger.
+### 4. Interface Layer (`/interfaces`)
+The presentation layer. This is the only entry point for the user.
+- **CLI**: `CliHandler` manages command-line arguments and output formatting.
+- **Future**: This layer can be expanded to include REST APIs or GUI interfaces without touching the core logic.
 
-This allows for granular control over log levels and provides structured logs that are easy to ingest into observability platforms.
+---
 
-## Data Flow
+## 🔄 Data Execution Flow
 
-1. **User Input**: A user provides a prompt and an agent name (persona) via the CLI.
-2. **Initialization**: The CLI loads the corresponding persona from the JSON file and validates it.
-3. **Agent Execution**: The framework initializes the agent with the validated persona and the requested tools.
-4. **Streaming Response**: The agent's response is streamed back to the user in real-time.
+1. **User Request**: User invokes the CLI with a prompt and agent name.
+2. **Presentation**: `CliHandler` validates input and calls `AgentService.execute()`.
+3. **Orchestration**: `AgentService` calls `GetPersonaUseCase` to retrieve the agent's identity.
+4. **Persistence**: `FilePersonaRepository` reads the JSON persona from disk.
+5. **Execution**: `AgentService` sends the persona and prompt to `RustBindingsAdapter`.
+6. **Core**: The Rust core processes the request and returns a response.
+7. **Output**: The response flows back through the layers to the CLI for display.
+
+## 🛠️ Tech Stack
+- **Language**: TypeScript (Application) & Rust (Core Engine)
+- **Validation**: Zod (Runtime type safety)
+- **Bridge**: Rust FFI / NAPI-RS
+- **Logging**: Pino
+- **Architecture**: Clean Architecture / Hexagonal

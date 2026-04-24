@@ -1,0 +1,20 @@
+{
+  "name": "imzx",
+  "version": "1.0.0",
+  "description": "Dual-language Claude Agent SDK framework",
+  "main": "interfaces/cli/cli-handler.ts",
+  "type": "module",
+  "scripts": {
+    "start": "node interfaces/cli/cli-handler.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.22.0",
+    "dotenv": "^16.3.1",
+    "pino": "^8.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.0"
+  }
+}
