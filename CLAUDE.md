@@ -1,52 +1,54 @@
 # Project: imzx
 
-A dual-language (TypeScript & Python) Claude Agent SDK framework.
+A high-performance Claude Agent SDK framework implementing Clean Architecture (Hexagonal) for maximum scalability and maintainability.
 
-## Quick Start
+## 🚀 Quick Start
+
+### Installation
+From the project root:
+```bash
+# Automatic setup (installs Rust bindings, Node dependencies, and Python venv)
+chmod +x setup.sh && ./setup.sh
+```
+
+### Running the Agent
+The project uses a root-level `package.json` for streamlined execution:
+```bash
+# Run the agent with a prompt and persona
+npm start "Hello, how are you?" general-purpose
+```
+
+### Configuration
+Create a `.env` file in the root directory:
+`ANTHROPIC_API_KEY=your_api_key_here`
+
+## 🏗️ Project Structure (Clean Architecture)
+
+- `domain/`: Core business logic, entities (Personas), and ports (Interfaces).
+- `application/`: Orchestration services and use cases.
+- `adapters/`: Infrastructure implementations (Rust FFI, File System).
+- `interfaces/`: Presentation layers (CLI Handler).
+- `core/`: High-performance Rust engine (Core logic).
+- `bindings/`: Rust $\leftrightarrow$ TypeScript FFI bridge.
+- `personas/`: JSON persona configurations.
+
+## 🛠️ Coding Standards
 
 ### TypeScript
-- **Install**: `cd imzx/typescript && npm install`
-- **Run Example**: `cd imzx/typescript && npm start`
-- **Typecheck**: `cd imzx/typescript && npm run typecheck`
-- **Development**: `cd imzx/typescript && npm run dev`
+- **Architecture**: Strictly follow the Dependency Rule (Inner layers do not depend on outer layers).
+- **Modules**: Use ESM (`type: "module"`).
+- **Types**: Strict type checking enabled; use Zod for runtime validation.
 
-### Python
-- **Install**: `cd imzx/python && pip install -r requirements.txt`
-- **Run Example**: `cd imzx/python && python coding.py`
+### Rust
+- **Performance**: Use the global `RUNTIME` singleton for async operations in FFI layers.
+- **Safety**: Handle all FFI boundaries gracefully; update Agent State to `Error` on failure.
 
-## Project Structure
-
-- `imzx/typescript/`: TypeScript implementation.
-  - `src/`: Source code including:
-    - `hello.ts`: Minimal "Hello World"
-    - `basic.ts`: Agent with common features
-    - `coding.ts`: Specialized coding agent
-- `imzx/python/`: Python implementation.
-  - `hello.py`: Minimal "Hello World"
-  - `basic.py`: Agent with common features
-  - `coding.py`: Specialized coding agent
-
-## Coding Standards
-
-- **TypeScript**:
-  - Use ESM (`type: "module"`)
-  - Strict type checking enabled
-  - Use `for await...of` for streaming agent responses
-- **Python**:
-  - Use modern Python 3 syntax
-  - Use `asyncio` patterns where applicable
-
-## Security & Robustness
-
-- **Input Sanitization**: Always sanitize user-provided strings (e.g., agent names, file paths) using allow-lists and `std::fs::canonicalize` to prevent Path Traversal attacks.
-- **Path Jailing**: All filesystem operations must be constrained to the project root using a `root_dir` check.
-- **Token Management**: Always use the `Tokenizer` in `MemoryManager` for accurate token counting. Never use raw byte or character lengths.
-- **Runtime Efficiency**: Use the global `RUNTIME` singleton for all async operations in FFI layers to avoid overhead.
-- **LlmProvider Pattern**: When adding new LLM support, implement the `LlmProvider` trait to maintain provider agnosticism.
-- **Error Handling**: Ensure all FFI boundaries handle errors gracefully and update the Agent State to `Error` on failure.
+## 🛡️ Security & Robustness
+- **Path Traversal**: All filesystem operations must use sanitized IDs (regex: `^[a-zA-Z0-9_-]+$`) and be constrained to the project root.
+- **Token Management**: Always use the `Tokenizer` in `MemoryManager` for accurate token counting.
 - **Privacy**: Never use `println!` or `console.log` for user-sensitive data in the core logic.
+- **Secrets**: Never hardcode API keys; use `.env` files and `.gitignore`.
 
-... (rest of the file)
-
-Create a `.env` file in the root directory with your API key:
-`ANTHROPIC_API_KEY=your_api_key_here`
+## 📖 Documentation
+- For detailed architectural diagrams and flow, see `docs/architecture.md`.
+- For contribution guidelines, see `CONTRIBUTING.md`.
