@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Starting interactive setup for imzx...${NC}"
+echo -e "${BLUE}🚀 Starting interactive setup for imzx (Clean Architecture Version)...${NC}"
 
 # Function to ask for input
 ask_input() {
@@ -37,6 +37,7 @@ fi
 
 # Setup Python environment
 echo "Setting up Python environment..."
+mkdir -p app/python-cli
 cd app/python-cli
 python3 -m venv venv
 source venv/bin/activate
@@ -48,17 +49,16 @@ cd ../..
 # Setup TypeScript
 if command -v npm &> /dev/null; then
     echo "Setting up TypeScript environment..."
-    cd app/typescript-cli
+    # Install from root package.json
     npm install --ignore-scripts --quiet
-    echo -e "${GREEN}✅ TypeScript CLI dependencies installed.${NC}"
-    cd ../..
+    echo -e "${GREEN}✅ Project dependencies installed.${NC}"
 
     # Build the Rust-TS bindings
     echo "Building TypeScript bindings..."
     cd bindings/typescript
     npm install --ignore-scripts --quiet
 
-    # FIX: Ensure cargo is in the PATH for npx neon build
+    # Ensure cargo is in the PATH for npx neon build
     export PATH="$PATH:$(dirname $(command -v cargo))"
     npx neon build
     echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
@@ -116,6 +116,7 @@ echo "✅ Templates created in personas/templates/"
 
 read -p "$(echo -e "${YELLOW}Would you like to copy these templates to your main personas folder? (y/N): ${NC}")" copy_templates
 if [[ "$copy_templates" =~ ^[Yy]$ ]]; then
+    mkdir -p personas
     cp personas/templates/*.json personas/
     echo -e "${GREEN}✅ Templates copied to personas/${NC}"
 else
@@ -123,5 +124,5 @@ else
 fi
 
 echo -e "\n${GREEN}✨ Setup complete! You are ready to run imzx.${NC}"
-echo -e "TS: cd app/typescript-cli && npm start"
-echo -e "PY: cd app/python-cli && ./venv/bin/python main.py <prompt> [persona]"
+echo -e "TS: npm start \"Hello\" general-purpose"
+echo -e "PY: cd app/python-cli && ./venv/bin/python main.py \"Hello\" general-purpose"
