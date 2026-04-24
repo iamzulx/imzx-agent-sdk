@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use std::sync::Arc;
+use napi_derive::napi;
 
 pub mod types;
 pub mod error;
@@ -22,7 +23,7 @@ pub use tools::ToolRegistry;
 pub use memory::MemoryManager;
 pub use embedding::LocalEmbedder;
 
-// Global Tokio Runtime for all FFI calls
+// Global Tokio Runtime
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -51,22 +52,33 @@ impl PyAgent {
         }
     }
 
-    fn register_model(&mut self, model_name: String, api_key: String) -> PyResult<()> {
-        // This will be updated to use the new Provider trait and Router logic
-        // For now, maintaining basic compatibility
-        Ok(())
-    }
-
-    fn set_model(&mut self, model_name: String) -> PyResult<()> {
-        self.inner.set_model(&model_name);
-        Ok(())
-    }
-
     fn run(&mut self, input: String) -> PyResult<String> {
         let result = RUNTIME.block_on(async {
             self.inner.run(&input).await
         }).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         Ok(result)
+    }
+}
+
+// --- TypeScript Bindings (NAPI-RS) ---
+
+#[napi]
+pub struct TsAgent {
+    pub inner: Arc<Agent>,
+}
+
+#[napi]
+impl TsAgent {
+    #[napi(constructor)]
+    pub fn new(name: String, description: String, prompt: String) -> Self {
+        TsAgent {
+            inner: Arc::new(Agent::new(name, description, prompt)),
+        }
+    }
+
+    #[napi]
+    pub async fn run(&self, prompt: String) -> String {
+        self.inner.run(&prompt).await
     }
 }
