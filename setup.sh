@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Starting interactive setup for imzx (Clean Architecture Version)...${NC}"
+echo -e "${BLUE}🚀 Starting interactive setup for imzx...${NC}"
 
 # Function to ask for input
 ask_input() {
@@ -88,37 +88,36 @@ fi
 
 # 3. Persona Templates
 echo -e "\n${BLUE}🎭 Setting up Persona Templates...${NC}"
-mkdir -p personas/templates
+mkdir -p domain/personas/templates
 
 # Create some default templates
-cat <<EOF > personas/templates/coding-pro.json
+cat <<EOF > domain/personas/templates/coding-pro.json
 {
   "description": "Senior Software Engineer",
   "prompt": "You are an expert software engineer. Provide clean, efficient, and well-documented code. Prioritize security and best practices."
 }
 EOF
 
-cat <<EOF > personas/templates/creative-writer.json
+cat <<EOF > domain/personas/templates/creative-writer.json
 {
   "description": "Creative Storyteller",
   "prompt": "You are a master storyteller. Use vivid imagery, engaging pacing, and deep character development in your writing."
 }
 EOF
 
-cat <<EOF > personas/templates/study-buddy.json
+cat <<EOF > domain/personas/templates/study-buddy.json
 {
   "description": "Patient Tutor",
   "prompt": "You are a patient tutor. Use the Feynman technique: explain complex concepts as if I were a 10-year-old. Ask questions to check my understanding."
 }
 EOF
 
-echo "✅ Templates created in personas/templates/"
+echo "✅ Templates created in domain/personas/templates/"
 
 read -p "$(echo -e "${YELLOW}Would you like to copy these templates to your main personas folder? (y/N): ${NC}")" copy_templates
 if [[ "$copy_templates" =~ ^[Yy]$ ]]; then
-    mkdir -p personas
-    cp personas/templates/*.json personas/
-    echo -e "${GREEN}✅ Templates copied to personas/${NC}"
+    cp domain/personas/templates/*.json domain/personas/
+    echo -e "${GREEN}✅ Templates copied to domain/personas/${NC}"
 else
     echo "Skipping template copy."
 fi
