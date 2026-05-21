@@ -1,8 +1,9 @@
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { AgentService } from '../../../application/agent-service';
-import { FilePersonaRepository } from '../../../adapters/persistence/file-persona-repository';
-import { RustBindingsAdapter } from '../../../adapters/external/rust-bindings-adapter';
+import { pathToFileURL } from 'node:url';
+import { AgentService } from '../../application/agent-service.js';
+import { GetPersonaUseCase } from '../../application/use-cases/get-persona.js';
+import { FilePersonaRepository } from '../../adapters/persistence/file-persona-repository.js';
+import { RustBindingsAdapter } from '../../adapters/external/rust-bindings-adapter.js';
 
 /**
  * CLI Handler: Presentation layer interface for the command-line interface.
@@ -23,7 +24,7 @@ export class CliHandler {
     const agentEngine = new RustBindingsAdapter();
 
     // Create use case
-    const getPersonaUseCase = new (await import('../../application/use-cases/get-persona')).GetPersonaUseCase(personaRepository);
+    const getPersonaUseCase = new GetPersonaUseCase(personaRepository);
 
     // Compose application service
     this.agentService = new AgentService(getPersonaUseCase, agentEngine);
@@ -73,8 +74,14 @@ export class CliHandler {
    * Display usage information.
    */
   private showUsage(): void {
-    console.log('Usage: node cli-handler.ts <prompt> [agent_name]');
+    console.log('Usage: npm start -- <prompt> [agent_name]');
     console.log('  <prompt>    The user query to send to the agent');
     console.log('  [agent_name] Optional: name of the persona to use (defaults to "general-purpose")');
   }
+}
+
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  const personaDir = path.resolve(process.cwd(), 'domain/personas');
+  const handler = new CliHandler(personaDir);
+  await handler.handle(process.argv.slice(2));
 }

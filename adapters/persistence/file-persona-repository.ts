@@ -1,7 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Persona } from '../../domain/personas/types';
-import { PersonaRepository } from '../../domain/personas/repository';
+import { PersonaSchema } from '../../domain/personas/types.js';
+import type { Persona } from '../../domain/personas/types.js';
+import type { PersonaRepository } from '../../domain/personas/repository.js';
 
 /**
  * File-based implementation of PersonaRepository.
@@ -25,7 +26,8 @@ export class FilePersonaRepository implements PersonaRepository {
     }
     const filePath = join(this.baseDir, `${id}.json`);
     const content = await readFile(filePath, 'utf-8');
-    return JSON.parse(content) as Persona;
+    const parsed = PersonaSchema.parse(JSON.parse(content));
+    return { ...parsed, id };
   }
 
   /**
@@ -33,8 +35,11 @@ export class FilePersonaRepository implements PersonaRepository {
    * @param persona - The persona to save
    */
   async save(persona: Persona): Promise<void> {
+    if (!persona.id) {
+      throw new Error('Persona ID is required');
+    }
     const filePath = join(this.baseDir, `${persona.id}.json`);
-    const content = JSON.stringify(persona, null, 2);
+    const content = JSON.stringify(PersonaSchema.parse(persona), null, 2);
     await writeFile(filePath, content, 'utf-8');
   }
 }

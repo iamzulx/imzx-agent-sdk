@@ -10,8 +10,7 @@ If you are not a programmer, don't worry! You can still run and use imzx by foll
 
 ### 1. Initial Setup (Installation)
 Before starting, make sure you have the following installed:
-- **Python** (Version 3.10 or newer)
-- **Node.js** (If you wish to use the TypeScript version)
+- **Node.js** (Latest LTS version)
 - **Git**
 
 **Automatic Installation:**
@@ -19,12 +18,12 @@ Open your terminal/command prompt in the project folder and type:
 ```bash
 chmod +x setup.sh && ./setup.sh
 ```
-*This script will handle all the technical installation for you automatically.*
+*This script will install the Node dependencies and create starter persona templates for you automatically.*
 
 ---
 
 ### 2. Connecting to AI (Adding LLM)
-To make your assistant work, you need to provide an "API Key" from an AI provider (e.g., Anthontic/Claude).
+To make your assistant work, you need to provide an "API Key" from an AI provider (e.g., Anthropic/Claude).
 
 1. Look for a file named `.env.example` in the root folder.
 2. Copy/Duplicate that file and rename it to `.env`.
@@ -52,19 +51,11 @@ You can define who your assistant should be. All "personalities" are stored in t
 ---
 
 ### 4. How to Run Your Assistant
-You can choose the Python version (simpler) or the TypeScript version.
-
-**Using Python:**
-```bash
-cd app/python-cli
-./venv/bin/python main.py "Hello, who are you?" your-persona-name
-```
-*(Replace `your-persona-name` with the name of the JSON file you created in the personas folder, without the .json extension)*
-
-**Using TypeScript:**
+Run the TypeScript CLI from the project root:
 ```bash
 npm start "Hello, who are you?" your-persona-name
 ```
+*(Replace `your-persona-name` with the name of the JSON file you created in `domain/personas/`, without the `.json` extension. Omit it to use `general-purpose`.)*
 
 ---
 
