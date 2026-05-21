@@ -1,6 +1,6 @@
-import { GetPersonaUseCase } from './use-cases/get-persona';
-import { AgentEnginePort } from '../domain/ports/agent-engine';
-import { Persona } from '../domain/personas/types';
+import type { GetPersonaUseCase } from './use-cases/get-persona.js';
+import type { AgentEnginePort } from '../domain/ports/agent-engine.js';
+import type { Persona } from '../domain/personas/types.js';
 
 /**
  * Application Service: Coordinates the workflow for running an agent.
@@ -27,14 +27,11 @@ export class AgentService {
     const persona: Persona = await this.getPersonaUseCase.execute(agentId);
 
     // Step 2: Initialize Engine (Infrastructure)
-    const initResult = await this.agentEngine.initialize(
+    await this.agentEngine.initialize(
       agentId,
       persona.description,
       persona.prompt
     );
-    // Log removed from application layer to prevent info leakage
-    // If logging is needed, use a dedicated Logger adapter
-
 
     // Step 3: Run Agent (Infrastructure)
     const response = await this.agentEngine.run(userPrompt);

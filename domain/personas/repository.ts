@@ -1,4 +1,4 @@
-import { Persona } from './types';
+import type { Persona } from './types.js';
 
 /**
  * Port interface for persona persistence.

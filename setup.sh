@@ -26,46 +26,17 @@ ask_input() {
     eval "$var_name=\"$input\""
 }
 
-# 1. Setup TypeScript/Python environments
+# 1. Setup TypeScript environment
 echo -e "\n${BLUE}📦 Installing dependencies...${NC}"
 
-# Check for Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Python3 not found. Please install Python before continuing.${NC}"
+if ! command -v npm &> /dev/null; then
+    echo -e "${RED}❌ npm not found. Please install Node.js before continuing.${NC}"
     exit 1
 fi
 
-# Setup Python environment
-echo "Setting up Python environment..."
-mkdir -p app/python-cli
-cd app/python-cli
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt --quiet
-pip install pytest --quiet
-echo -e "${GREEN}✅ Python setup complete.${NC}"
-cd ../..
-
-# Setup TypeScript
-if command -v npm &> /dev/null; then
-    echo "Setting up TypeScript environment..."
-    # Install from root package.json
-    npm install --ignore-scripts --quiet
-    echo -e "${GREEN}✅ Project dependencies installed.${NC}"
-
-    # Build the Rust-TS bindings
-    echo "Building TypeScript bindings..."
-    cd bindings/typescript
-    npm install --ignore-scripts --quiet
-
-    # Ensure cargo is in the PATH for npx neon build
-    export PATH="$PATH:$(dirname $(command -v cargo))"
-    npx neon build
-    echo -e "${GREEN}✅ TypeScript bindings build complete.${NC}"
-    cd ../..
-else
-    echo -e "${YELLOW}⚠️  npm not found. Skipping TypeScript setup.${NC}"
-fi
+echo "Setting up TypeScript environment..."
+npm install --ignore-scripts --quiet
+echo -e "${GREEN}✅ Project dependencies installed.${NC}"
 
 # 2. API Key Configuration
 echo -e "\n${BLUE}🔑 Configuring API Keys...${NC}"
@@ -124,4 +95,3 @@ fi
 
 echo -e "\n${GREEN}✨ Setup complete! You are ready to run imzx.${NC}"
 echo -e "TS: npm start \"Hello\" general-purpose"
-echo -e "PY: cd app/python-cli && ./venv/bin/python main.py \"Hello\" general-purpose"

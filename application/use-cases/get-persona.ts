@@ -1,5 +1,5 @@
-import { Persona } from '../domain/personas/types';
-import { PersonaRepository } from '../domain/personas/repository';
+import type { Persona } from '../../domain/personas/types.js';
+import type { PersonaRepository } from '../../domain/personas/repository.js';
 
 /**
  * Use case: Retrieve a persona by its ID.

@@ -1,5 +1,3 @@
-import { Persona } from '../../domain/personas/types';
-
 /**
  * Port interface for interacting with the LLM/Agent engine.
  * Provides an abstraction over the low-level implementation (Rust, WASM, etc.).

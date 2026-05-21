@@ -7,7 +7,7 @@ A high-performance Claude Agent SDK framework implementing Clean Architecture (H
 ### Installation
 From the project root:
 ```bash
-# Automatic setup (installs Rust bindings, Node dependencies, and Python venv)
+# Automatic setup (installs Node dependencies and persona templates)
 chmod +x setup.sh && ./setup.sh
 ```
 
@@ -30,7 +30,7 @@ Create a `.env` file in the root directory:
 - `interfaces/`: Presentation layers (CLI Handler).
 - `core/`: High-performance Rust engine (Core logic).
 - `bindings/`: Rust $\leftrightarrow$ TypeScript FFI bridge.
-- `personas/`: JSON persona configurations.
+- `domain/personas/`: JSON persona configurations and persona domain types.
 
 ## 🛠️ Coding Standards
 
@@ -51,4 +51,3 @@ Create a `.env` file in the root directory:
 
 ## 📖 Documentation
 - For detailed architectural diagrams and flow, see `docs/architecture.md`.
-- For contribution guidelines, see `CONTRIBUTING.md`.
