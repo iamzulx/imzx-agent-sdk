@@ -51,7 +51,9 @@ fi
 
 ask_input "Enter your ANTHROPIC_API_KEY" API_KEY
 if [ -n "$API_KEY" ]; then
+    umask 077
     echo "ANTHROPIC_API_KEY=$API_KEY" > .env
+    chmod 600 .env
     echo -e "${GREEN}✅ .env file created successfully.${NC}"
 else
     echo -e "${YELLOW}⚠️  No API Key provided. You will need to create a .env file manually later.${NC}"

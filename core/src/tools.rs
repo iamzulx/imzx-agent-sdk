@@ -5,9 +5,10 @@ use anyhow::{Result, anyhow};
 use serde::{Serialize, Deserialize};
 use std::fs;
 use std::process::Command;
-use std::path::{Path, PathBuf};
+use std::net::IpAddr;
+use std::path::{Component, Path, PathBuf};
 use std::env;
-use reqwest;
+use reqwest::{self, redirect::Policy, Url};
 use scraper::{Html, Selector};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,31 +32,56 @@ pub struct FileSystemTool {
 impl FileSystemTool {
     pub fn new() -> Self {
         Self {
-            root_dir: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            root_dir: env::current_dir()
+                .ok()
+                .and_then(|path| fs::canonicalize(path).ok())
+                .unwrap_or_else(|| PathBuf::from(".")),
         }
     }
 
-    fn sanitize_path(&self, user_path: &str) -> Result<PathBuf> {
+    fn sanitize_path(&self, user_path: &str, must_exist: bool) -> Result<PathBuf> {
         let path = Path::new(user_path);
+
+        if path.is_absolute() {
+            return Err(anyhow!("Security violation: Absolute paths are not allowed."));
+        }
+
+        for component in path.components() {
+            match component {
+                Component::Normal(part) => {
+                    let value = part.to_string_lossy();
+                    if value.starts_with('.') || matches!(value.as_ref(), "passwd" | "shadow") {
+                        return Err(anyhow!("Security violation: Access to protected path component '{}' is forbidden.", value));
+                    }
+                }
+                Component::CurDir => {}
+                _ => return Err(anyhow!("Security violation: Path traversal is not allowed.")),
+            }
+        }
+
         let full_path = self.root_dir.join(path);
 
-        let canonical_full = fs::canonicalize(&full_path)
-            .map_err(|e| anyhow!("Invalid path: {}. Error: {}", user_path, e))?;
+        if must_exist {
+            let canonical_full = fs::canonicalize(&full_path)
+                .map_err(|e| anyhow!("Invalid path: {}. Error: {}", user_path, e))?;
 
-        if !canonical_full.starts_with(&self.root_dir) {
+            if !canonical_full.starts_with(&self.root_dir) {
+                return Err(anyhow!("Security violation: Path is outside of the allowed directory."));
+            }
+
+            return Ok(canonical_full);
+        }
+
+        let parent = full_path.parent()
+            .ok_or_else(|| anyhow!("Invalid path: {}", user_path))?;
+        let canonical_parent = fs::canonicalize(parent)
+            .map_err(|e| anyhow!("Invalid parent path: {}. Error: {}", user_path, e))?;
+
+        if !canonical_parent.starts_with(&self.root_dir) {
             return Err(anyhow!("Security violation: Path is outside of the allowed directory."));
         }
 
-        let file_name = canonical_full.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-
-        let protected_files = [".env", ".git", ".claude", "passwd", "shadow"];
-        if protected_files.contains(&file_name) {
-            return Err(anyhow!("Security violation: Access to protected file '{}' is forbidden.", file_name));
-        }
-
-        Ok(canonical_full)
+        Ok(full_path)
     }
 }
 
@@ -70,22 +96,29 @@ impl Tool for FileSystemTool {
 
         let command = parts[0];
         let path_str = parts[1];
-        let safe_path = self.sanitize_path(path_str)?;
 
         match command {
             "read" => {
+                let safe_path = self.sanitize_path(path_str, true)?;
                 let content = fs::read_to_string(&safe_path)?;
                 Ok(ToolResult { content })
             }
             "write" => {
                 if parts.len() < 3 { return Err(anyhow!("Missing content for write operation")); }
+                let safe_path = self.sanitize_path(path_str, false)?;
                 let content = parts[2];
                 fs::write(&safe_path, content)?;
                 Ok(ToolResult { content: "File written successfully".to_string() })
             }
             "list" => {
+                let safe_path = self.sanitize_path(path_str, true)?;
                 let paths = fs::read_dir(&safe_path)?
-                    .filter_map(|entry| entry.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+                    .filter_map(|entry| {
+                        entry.ok().and_then(|e| {
+                            let name = e.file_name().to_string_lossy().into_owned();
+                            if name.starts_with('.') { None } else { Some(name) }
+                        })
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 Ok(ToolResult { content: paths })
@@ -103,21 +136,36 @@ impl Tool for ShellTool {
     fn description(&self) -> &str { "Execute a specific set of safe shell commands. Args: '<command>'" }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
-        let allowed_commands = ["ls", "git status", "git log", "npm test", "cargo build", "cargo check", "cargo run"];
+        let tokens: Vec<&str> = args.split_whitespace().collect();
+        if tokens.is_empty() {
+            return Err(anyhow!("Invalid args. Provide a command to execute."));
+        }
 
-        if !allowed_commands.iter().any(|&cmd| args.trim().starts_with(cmd)) {
+        let allowed_commands: &[&[&str]] = &[
+            &["ls"],
+            &["git", "status"],
+            &["git", "log"],
+            &["npm", "test"],
+            &["cargo", "build"],
+            &["cargo", "check"],
+            &["cargo", "run"],
+        ];
+
+        if !allowed_commands.iter().any(|allowed| tokens.starts_with(allowed)) {
             return Err(anyhow!("Security violation: Command '{}' is not in the allowed list.", args));
         }
 
-        let forbidden_chars = [';', '&', '|', '>', '<', '$', '(', ')', '`', '\\'];
-        if args.chars().any(|c| forbidden_chars.contains(&c)) {
-            return Err(anyhow!("Security violation: Command contains forbidden characters (potential injection attempt)."));
+        for token in &tokens {
+            if token.contains("..") || token.starts_with('/') || token.starts_with('.') || token.contains("/." ) {
+                return Err(anyhow!("Security violation: Command argument '{}' is not allowed.", token));
+            }
         }
 
-        let output = Command::new("sh")
-            .arg("-c")
+        let output = Command::new(tokens[0])
+            .args(&tokens[1..])
+            .current_dir(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .env_clear()
-            .arg(args)
+            .env("PATH", "/usr/bin:/bin")
             .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -164,23 +212,62 @@ impl Tool for WebSearchTool {
 
 pub struct WebScraperTool;
 
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_multicast()
+                || ip.is_broadcast()
+                || ip.is_unspecified()
+                || ip.octets()[0] == 0
+        }
+        IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+                || (ip.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
 #[async_trait]
 impl Tool for WebScraperTool {
     fn name(&self) -> &str { "web_scraper" }
     fn description(&self) -> &str { "Read content from a URL. Args: '<url>'" }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
-        let url = args.trim();
+        let url = Url::parse(args.trim())?;
 
-        if url.contains("127.0.0.1") || url.contains("localhost") || url.contains("192.168.") || url.contains("10.") {
-            return Err(anyhow!("Security violation: Access to local/private network is forbidden (SSRF protection)."));
+        if !matches!(url.scheme(), "http" | "https") || url.username() != "" || url.password().is_some() {
+            return Err(anyhow!("Security violation: URL scheme or credentials are not allowed."));
+        }
+
+        let host = url.host_str()
+            .ok_or_else(|| anyhow!("Invalid URL: missing host"))?;
+        let port = url.port_or_known_default()
+            .ok_or_else(|| anyhow!("Invalid URL: missing port"))?;
+
+        let addrs = tokio::net::lookup_host((host, port)).await?;
+        for addr in addrs {
+            if is_blocked_ip(addr.ip()) {
+                return Err(anyhow!("Security violation: Access to local/private network is forbidden (SSRF protection)."));
+            }
         }
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            .redirect(Policy::none())
             .build()?;
 
-        let body = client.get(url).send().await?.text().await?;
+        let response = client.get(url).send().await?;
+        if response.status().is_redirection() {
+            return Err(anyhow!("Security violation: Redirects are not followed by the web scraper."));
+        }
+
+        let body = response.text().await?;
         let document = Html::parse_document(&body);
         let selector = Selector::parse("p, h1, h2, h3").unwrap();
 
