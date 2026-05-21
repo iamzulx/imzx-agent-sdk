@@ -6,6 +6,7 @@ use napi_derive::napi;
 
 pub mod types;
 pub mod error;
+pub mod llm;
 pub mod provider;
 pub mod strategy;
 pub mod agent;
