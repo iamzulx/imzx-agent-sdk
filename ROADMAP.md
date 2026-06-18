@@ -27,7 +27,7 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ### Phase 1 — Bikin Agent Jalan (Core Functionality)
 
-- **1.1 Fix function calling format** [TODO]
+- *1.1 Fix function calling format* [DONE]
   AgentEngine masih pakai text parsing `Action:/Action Input:` — fragile.
   Pindah ke OpenAI native function calling format (tool_calls array dari response).
   LlmProvider.stream() sudah parse tool_calls, tapi AgentEngine.run() belum.

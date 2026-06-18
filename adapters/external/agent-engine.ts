@@ -88,10 +88,18 @@ export class AgentEngine implements AgentEnginePort {
       }
 
       // LLM wants to call tools
-      // Add assistant message with tool calls
+      // Add assistant message with tool_calls (OpenAI native format)
       this.messages.push({
         role: 'assistant',
-        content: response.content || '',
+        content: response.content || null,
+        tool_calls: response.toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: tc.arguments,
+          },
+        })),
       });
 
       // Execute each tool call
@@ -157,7 +165,7 @@ export class AgentEngine implements AgentEnginePort {
 
       this.stats.requestCount++;
       // Estimate tokens from text length (rough)
-      const estInput = Math.floor(this.messages.reduce((sum, m) => sum + m.content.length, 0) / 4);
+      const estInput = Math.floor(this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);
       const estOutput = Math.floor(fullContent.length / 4);
       this.stats.totalInputTokens += estInput;
       this.stats.totalOutputTokens += estOutput;
@@ -170,8 +178,16 @@ export class AgentEngine implements AgentEnginePort {
         return;
       }
 
-      // Add assistant message
-      this.messages.push({ role: 'assistant', content: fullContent });
+      // Add assistant message with tool_calls (OpenAI native format)
+      this.messages.push({
+        role: 'assistant',
+        content: fullContent || null,
+        tool_calls: toolCallsAccumulated.map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      });
 
       // Execute tools
       for (const toolCall of toolCallsAccumulated) {
