@@ -1,8 +1,16 @@
+// Author: Iamzulx
+// SPDX-License-Identifier: MIT
+//
+// Core library — Python (PyO3) and TypeScript (NAPI-RS) bindings.
+// Security fix applied:
+//   [M1]  TsAgent::run() returns napi::Result — errors propagated, not swallowed
+
 use pyo3::prelude::*;
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use std::sync::Arc;
 use napi_derive::napi;
+use napi::Status;
 
 pub mod types;
 pub mod error;
@@ -78,8 +86,11 @@ impl TsAgent {
         }
     }
 
+    // [M1 FIX] Return napi::Result — errors propagated to TypeScript instead of swallowed.
     #[napi]
-    pub async fn run(&self, prompt: String) -> String {
-        self.inner.run(&prompt).await
+    pub async fn run(&self, prompt: String) -> napi::Result<String> {
+        self.inner.run(&prompt).await.map_err(|e| {
+            napi::Error::new(Status::GenericFailure, e.to_string())
+        })
     }
 }

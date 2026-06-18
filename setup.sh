@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Starting interactive setup for imzx...${NC}"
 
-# Function to ask for input
+# Function to ask for input — uses printf -v (safe) instead of eval (RCE risk)
 ask_input() {
     local prompt=$1
     local var_name=$2
@@ -23,7 +23,8 @@ ask_input() {
         read -p "$(echo -e "${YELLOW}$prompt [$default_val]: ${NC}")" input
         input=${input:-$default_val}
     fi
-    eval "$var_name=\"$input\""
+    # [H1 FIX] printf -v is safe — no code execution, unlike eval
+    printf -v "$var_name" '%s' "$input"
 }
 
 # 1. Setup TypeScript environment
@@ -40,23 +41,29 @@ echo -e "${GREEN}✅ Project dependencies installed.${NC}"
 
 # 2. API Key Configuration
 echo -e "\n${BLUE}🔑 Configuring API Keys...${NC}"
+
+# [H5 FIX] Track whether we should write .env — prevents accidental overwrite
+should_write_env=true
 if [ -f .env ]; then
     read -p "$(echo -e "${YELLOW}Found existing .env file. Overwrite it? (y/N): ${NC}")" overwrite
     if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
         echo "Skipping .env configuration."
+        should_write_env=false
     else
-        rm .env
+        rm -f .env
     fi
 fi
 
-ask_input "Enter your ANTHROPIC_API_KEY" API_KEY
-if [ -n "$API_KEY" ]; then
-    umask 077
-    echo "ANTHROPIC_API_KEY=$API_KEY" > .env
-    chmod 600 .env
-    echo -e "${GREEN}✅ .env file created successfully.${NC}"
-else
-    echo -e "${YELLOW}⚠️  No API Key provided. You will need to create a .env file manually later.${NC}"
+if [ "$should_write_env" = true ]; then
+    ask_input "Enter your ANTHROPIC_API_KEY" API_KEY
+    if [ -n "$API_KEY" ]; then
+        # [H5 FIX] Set umask in subshell before file creation — eliminates race window
+        # File is created with mode 0600 from the start, not chmod'd after
+        ( umask 077; printf 'ANTHROPIC_API_KEY=%s\n' "$API_KEY" > .env )
+        echo -e "${GREEN}✅ .env file created successfully (mode 0600).${NC}"
+    else
+        echo -e "${YELLOW}⚠️  No API Key provided. You will need to create a .env file manually later.${NC}"
+    fi
 fi
 
 # 3. Persona Templates

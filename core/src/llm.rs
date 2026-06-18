@@ -1,14 +1,35 @@
+// Author: Iamzulx
+// SPDX-License-Identifier: MIT
+//
+// LLM provider module — unified trait + OpenRouter implementation.
+// Security fixes applied:
+//   [H5]  API key stored in SecretBox (zeroized on drop), error bodies redacted
+//   [L4]  Consolidated LlmProvider trait (merged provider/mod.rs duplicate)
+
 use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use secrecy::{SecretBox, ExposeSecret};
+use crate::types::{Price, Latency};
 
+/// [L4 FIX] Unified LLM provider trait — merges llm.rs and provider/mod.rs.
+/// All LLM providers implement this single trait.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
-    async fn generate(&self, system_prompt: &str, user_prompt: &str, context: &str) -> Result<String>;
+    /// Unique identifier for the provider (e.g., "claude-3-5-sonnet")
     fn name(&self) -> &str;
+
+    /// Executes a generation request.
+    async fn generate(&self, system_prompt: &str, user_prompt: &str, context: &str) -> Result<String>;
+
+    /// Current price per 1M tokens (default: normalized 1.0).
+    fn current_price(&self) -> Price { Price(1.0) }
+
+    /// Measured average latency in milliseconds (default: 2000ms).
+    fn current_latency(&self) -> Latency { Latency(2000.0) }
 }
 
 pub struct ModelRegistry {
@@ -39,7 +60,6 @@ impl ModelRegistry {
     pub fn update_latency(&self, name: &str, latency_ms: f32) {
         if let Ok(mut metrics) = self.metrics.write() {
             let entry = metrics.entry(name.to_string()).or_insert(latency_ms);
-            // Moving average: 90% old, 10% new
             *entry = (*entry * 0.9) + (latency_ms * 0.1);
         }
     }
@@ -48,7 +68,7 @@ impl ModelRegistry {
         self.metrics.read()
             .ok()
             .and_then(|m| m.get(name).cloned())
-            .unwrap_or(2000.0) // Default fallback latency
+            .unwrap_or(2000.0)
     }
 }
 
@@ -74,8 +94,10 @@ struct Choice {
     message: ChatMessage,
 }
 
+/// [H5 FIX] API key is wrapped in SecretBox — zeroized on drop.
+/// The key is never exposed as plaintext String in the struct field.
 pub struct OpenRouterProvider {
-    pub api_key: String,
+    pub api_key: SecretBox<String>,
     pub model_name: String,
     pub client: Client,
 }
@@ -83,7 +105,7 @@ pub struct OpenRouterProvider {
 impl OpenRouterProvider {
     pub fn new(api_key: String, model_name: String) -> Self {
         Self {
-            api_key,
+            api_key: SecretBox::new(Box::new(api_key)),
             model_name,
             client: Client::new(),
         }
@@ -113,16 +135,19 @@ impl LlmProvider for OpenRouterProvider {
             messages,
         };
 
+        // [H5 FIX] Access key via ExposeSecret — never stored as plain String
         let response = self.client
             .post("https://openrouter.ai/api/v1/chat/completions")
-            .bearer_auth(&self.api_key)
+            .bearer_auth(self.api_key.expose_secret())
             .json(&request)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            let err_text = response.text().await?;
-            return Err(anyhow!("OpenRouter error ({}): {}", response.status(), err_text));
+            // [H5 FIX] Redact error body — only return status code, not response text
+            // (response text could contain echoed API key or sensitive headers)
+            let status = response.status();
+            return Err(anyhow!("OpenRouter API error: HTTP {}", status));
         }
 
         let parsed: ChatCompletionResponse = response.json().await?;

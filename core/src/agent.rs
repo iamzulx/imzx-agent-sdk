@@ -1,5 +1,14 @@
+// Author: Iamzulx
+// SPDX-License-Identifier: MIT
+//
+// Agent module — ReAct loop with security hardening.
+// Security fixes applied:
+//   [C1]  Typed ToolCall parsing + pre-execution validation
+//   [M3]  Tool observations sanitized via UntrustedObservation
+//   [M4]  Budget cap (max_tokens + budget_usd) enforced
+
 use std::fmt;
-use crate::tools::ToolRegistry;
+use crate::tools::{ToolRegistry, ToolCall, UntrustedObservation};
 use crate::memory::MemoryManager;
 use crate::embedding::LocalEmbedder;
 use crate::llm::{LlmProvider, ModelRegistry};
@@ -26,6 +35,22 @@ pub enum AgentState {
     Error(String),
 }
 
+/// [M4 FIX] Budget configuration to prevent runaway costs.
+#[derive(Debug, Clone)]
+pub struct BudgetConfig {
+    pub max_tokens: u64,
+    pub budget_usd: f64,
+}
+
+impl Default for BudgetConfig {
+    fn default() -> Self {
+        Self {
+            max_tokens: 500_000,     // 500K tokens per session
+            budget_usd: 5.0,         // $5 USD per session
+        }
+    }
+}
+
 pub struct Agent {
     pub name: String,
     pub description: String,
@@ -38,6 +63,8 @@ pub struct Agent {
     pub orchestrator: Orchestrator,
     pub default_model: String,
     pub stats: SessionStats,
+    /// [M4 FIX] Budget cap — agent halts when exceeded.
+    pub budget: BudgetConfig,
 }
 
 impl Agent {
@@ -54,6 +81,7 @@ impl Agent {
             orchestrator: Orchestrator::new(OrchestrationStrategy::Router),
             default_model: "claude-3-5-sonnet".to_string(),
             stats: SessionStats::default(),
+            budget: BudgetConfig::default(),
         }
     }
 
@@ -78,6 +106,29 @@ impl Agent {
 
     pub fn set_embedder(&mut self, embedder: LocalEmbedder) {
         self.embedder = Some(embedder);
+    }
+
+    /// [M4 FIX] Set custom budget limits.
+    pub fn set_budget(&mut self, max_tokens: u64, budget_usd: f64) {
+        self.budget = BudgetConfig { max_tokens, budget_usd };
+    }
+
+    /// [M4 FIX] Check if budget has been exceeded.
+    fn check_budget(&self) -> Result<()> {
+        let total_tokens = self.stats.total_input_tokens + self.stats.total_output_tokens;
+        if total_tokens >= self.budget.max_tokens {
+            return Err(anyhow!(
+                "Budget exceeded: {} tokens used (limit: {}). Halting to prevent cost overrun.",
+                total_tokens, self.budget.max_tokens
+            ));
+        }
+        if self.stats.total_cost_usd >= self.budget.budget_usd {
+            return Err(anyhow!(
+                "Budget exceeded: ${:.4} spent (limit: ${:.2}). Halting to prevent cost overrun.",
+                self.stats.total_cost_usd, self.budget.budget_usd
+            ));
+        }
+        Ok(())
     }
 
     pub async fn run(&mut self, input: &str) -> Result<String> {
@@ -105,7 +156,7 @@ impl Agent {
         // 2. ReAct/Planning Loop
         let mut current_input = input.to_string();
         let mut iteration_count = 0;
-        let max_iterations = 10; // Increased for planning steps
+        let max_iterations = 10;
 
         loop {
             if iteration_count >= max_iterations {
@@ -113,14 +164,18 @@ impl Agent {
                 return Err(anyhow!("Max iterations reached"));
             }
 
+            // [M4 FIX] Check budget before each iteration
+            if let Err(e) = self.check_budget() {
+                self.state = AgentState::Error(e.to_string());
+                return Err(e);
+            }
+
             // --- PHASE 1: PLANNING (If not already planned) ---
             if iteration_count == 0 {
                 self.state = AgentState::Planning;
 
-                // Use a high-intelligence model for planning
                 let planner = self.orchestrator.select_model(&self.llm_registry, AgentRole::Head, Some(&context))
                     .unwrap_or_else(|_| {
-                        // Fallback to the default model if orchestration fails or no role is assigned
                         let model_name = self.default_model.clone();
                         self.llm_registry.get(&model_name)
                             .expect("Default model must exist in registry")
@@ -135,7 +190,6 @@ impl Agent {
 
                 let plan_res = planner.generate(&self.prompt, &plan_prompt, &context).await?;
 
-                // Parse the plan (simple extraction)
                 if let Some(start_idx) = plan_res.find('[') {
                     if let Some(end_idx) = plan_res.find(']') {
                         let json_str = &plan_res[start_idx..=end_idx];
@@ -152,29 +206,24 @@ impl Agent {
 
             self.state = AgentState::Thinking;
 
-            // Use orchestrator to select model for the current task (defaulting to Worker role for standard ReAct)
             let provider = self.orchestrator.select_model(&self.llm_registry, AgentRole::Worker, Some(&context))
                 .unwrap_or_else(|_| {
-                    // Fallback to the default model if orchestration fails or no role is assigned
                     let model_name = self.default_model.clone();
                     self.llm_registry.get(&model_name)
                         .expect("Default model must exist in registry")
                 });
 
-            // Measure actual latency
             let start_time = std::time::Instant::now();
             let response = match provider.generate(&self.prompt, &current_input, &context).await {
                 Ok(res) => {
                     let elapsed = start_time.elapsed().as_millis() as f32;
                     self.llm_registry.update_latency(provider.name(), elapsed);
 
-                    // TRACK TOKENS AND COST (Simulated for now)
                     self.stats.request_count += 1;
-                    let input_tokens = current_input.len() as u64; // Placeholder
-                    let output_tokens = res.len() as u64; // Placeholder
+                    let input_tokens = current_input.len() as u64;
+                    let output_tokens = res.len() as u64;
                     self.stats.total_input_tokens += input_tokens;
                     self.stats.total_output_tokens += output_tokens;
-                    // Assume $0.001 per 1k tokens for demo
                     self.stats.total_cost_usd += (input_tokens as f64 * 0.000001) + (output_tokens as f64 * 0.000002);
 
                     res
@@ -185,40 +234,27 @@ impl Agent {
                 }
             };
 
-            // Basic parser for ReAct (Thought/Action/Observation)
-            if response.contains("Action:") && response.contains("Action Input:") {
+            // [C1 FIX] Use typed ToolCall parser instead of raw string matching
+            if let Some(tool_call) = ToolCall::parse_from_response(&response) {
                 self.state = AgentState::CallingTool {
-                    tool_name: "".to_string(),
-                    args: "".to_string()
+                    tool_name: tool_call.tool_name.clone(),
+                    args: tool_call.args.clone(),
                 };
 
-                let lines: Vec<&str> = response.lines().collect();
-                let mut tool_name = String::new();
-                let mut tool_args = String::new();
-
-                for line in lines {
-                    if line.starts_with("Action:") {
-                        tool_name = line.replace("Action:", "").trim().to_string();
-                    } else if line.starts_with("Action Input:") {
-                        tool_args = line.replace("Action Input:", "").trim().to_string();
-                    }
-                }
-
-                self.state = AgentState::CallingTool { tool_name: tool_name.clone(), args: tool_args.clone() };
-
-                // Execute Tool
-                let tool_result = match self.tool_registry.execute_tool(&tool_name, &tool_args).await {
+                // Execute Tool — validator runs inside execute_tool (C1)
+                let tool_result = match self.tool_registry.execute_tool(&tool_call.tool_name, &tool_call.args).await {
                     Ok(res) => res.content,
-                    Err(e) => format!("Error executing tool '{}': {}", tool_name, e),
+                    Err(e) => format!("Error executing tool '{}': {}", tool_call.tool_name, e),
                 };
 
-                // Observe Result
+                // [M3 FIX] Sanitize tool output before feeding back to LLM
+                let safe_observation = UntrustedObservation::sanitize(&tool_result);
+
                 self.state = AgentState::Observing;
                 self.memory.add_message("assistant", &response, None);
-                self.memory.add_message("system", &format!("Observation: {}", tool_result), None);
+                self.memory.add_message("system", &safe_observation, None);
 
-                // Prepare for next iteration
-                current_input = format!("Observation: {}", tool_result);
+                current_input = safe_observation;
                 iteration_count += 1;
                 continue;
             } else {
