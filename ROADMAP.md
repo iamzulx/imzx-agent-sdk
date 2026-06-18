@@ -54,16 +54,16 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ### Phase 2 — Tools Real
 
-- **2.1 Calculator (real)** [TODO]
+- **2.1 Calculator (real)** [DONE]
   Implementasi: `new Function('return ' + expr)` dengan sandboxing, atau mathjs.
 
-- **2.2 Web search (real)** [TODO]
+- **2.2 Web search (real)** [DONE]
   Integrasi: Tavily API / DuckDuckGo Lite scrape / Searxng.
 
-- **2.3 File edit tool** [TODO]
+- **2.3 File edit tool** [DONE]
   Tambah tool `edit_file(path, old_text, new_text)` — partial file edit.
 
-- **2.4 Tool approval** [TODO]
+- **2.4 Tool approval** [DONE]
   Sebelum execute tool berbahaya (write_file, run_command), minta user konfirmasi.
 
 - **2.5 Rust CalculatorTool** [TODO]
