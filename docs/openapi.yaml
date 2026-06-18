@@ -1,0 +1,437 @@
+openapi: 3.0.3
+info:
+  title: IMZX Agent SDK API
+  description: |
+    REST API for the imzx-agent-sdk — a self-improving AI agent framework.
+    Supports synchronous and streaming agent execution, OpenAI-compatible
+    chat completions, persona management, and session statistics.
+  version: 0.5.0
+  contact:
+    name: Iamzulx
+    url: https://github.com/iamzulx/imzx-agent-sdk
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Optional API key set via the IMZX_API_KEY environment variable.
+        If no key is configured, all endpoints are open (no auth required).
+        The /api/health endpoint always bypasses authentication.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "Unauthorized. Set Authorization: Bearer *** header."
+    RateLimited:
+      description: Rate limit exceeded (max 60 requests per minute per IP)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "Rate limit exceeded. Max 60 requests per minute."
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      example:
+        error: "prompt is required"
+
+    HealthResponse:
+      type: object
+      required: [status, version, uptime]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Service health status
+        version:
+          type: string
+          description: SDK version
+          example: "0.5.0"
+        uptime:
+          type: number
+          format: double
+          description: Process uptime in seconds
+          example: 123.456
+      example:
+        status: ok
+        version: "0.5.0"
+        uptime: 123.456
+
+    StatsResponse:
+      type: object
+      properties:
+        stats:
+          type: object
+          description: Aggregated session statistics from AgentService
+      example:
+        stats:
+          totalRuns: 42
+          totalTokens: 12500
+          avgResponseTime: 1.8
+
+    Persona:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Persona identifier (filename without .json)
+          example: general-purpose
+        name:
+          type: string
+          description: Display name
+          example: General Purpose
+        description:
+          type: string
+          description: What this persona does
+        tools:
+          type: array
+          items:
+            type: string
+          description: Allowed tools for this persona
+        system_prompt:
+          type: string
+          description: System prompt prefix
+
+    PersonasResponse:
+      type: object
+      properties:
+        personas:
+          type: array
+          items:
+            $ref: "#/components/schemas/Persona"
+      example:
+        personas:
+          - id: general-purpose
+            name: General Purpose
+            description: General-purpose agent
+
+    RunRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          description: The prompt to send to the agent
+          example: "What files are in the current directory?"
+          minLength: 1
+        persona:
+          type: string
+          description: >
+            Persona name to use. Defaults to "general-purpose" if omitted.
+          example: general-purpose
+        streaming:
+          type: boolean
+          description: >
+            If true, the response is returned as Server-Sent Events (SSE).
+            Defaults to false.
+          default: false
+        budget:
+          type: number
+          format: float
+          description: Maximum budget in USD for this run
+          example: 0.50
+
+    RunResponse:
+      type: object
+      properties:
+        response:
+          type: string
+          description: The agent's response text
+          example: "The current directory contains: src/, package.json, README.md"
+        persona:
+          type: string
+          description: The persona used for this run
+          example: general-purpose
+      example:
+        response: "The current directory contains: src/, package.json, README.md"
+        persona: general-purpose
+
+    SSEChunk:
+      type: object
+      description: A chunk delivered via Server-Sent Events during streaming
+      properties:
+        type:
+          type: string
+          enum: [text, tool, thinking, done, error]
+          description: Chunk type
+        content:
+          type: string
+          description: Chunk content
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant]
+          description: Message role
+        content:
+          type: string
+          description: Message content
+      example:
+        role: user
+        content: "Hello, how are you?"
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+          description: >
+            Array of messages in OpenAI chat format. The last message's
+            content is used as the agent prompt.
+          minItems: 1
+        model:
+          type: string
+          description: >
+            Model name (currently defaults to "general-purpose" persona).
+            Reserved for future use.
+          example: anthropic/claude-sonnet-4
+        stream:
+          type: boolean
+          description: If true, return SSE stream in OpenAI-compatible format
+          default: false
+
+    ChatCompletion:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique completion identifier
+          example: "chatcmpl-1687123456789"
+        object:
+          type: string
+          enum: [chat.completion]
+          description: Object type identifier
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: Choice index
+              message:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+                    description: Assistant message content
+              finish_reason:
+                type: string
+                enum: [stop]
+                description: Reason the generation stopped
+          description: Completion choices
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+              description: Tokens used in the prompt
+            completion_tokens:
+              type: integer
+              description: Tokens generated in the completion
+            total_tokens:
+              type: integer
+              description: Total tokens used
+      example:
+        id: "chatcmpl-1687123456789"
+        object: chat.completion
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: "Hello! I'm doing well, thanks for asking."
+            finish_reason: stop
+        usage:
+          prompt_tokens: 0
+          completion_tokens: 0
+          total_tokens: 0
+
+    ChatCompletionChunk:
+      type: object
+      description: A streaming chunk in OpenAI-compatible format
+      properties:
+        id:
+          type: string
+          description: Unique completion identifier
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              delta:
+                type: object
+                properties:
+                  content:
+                    type: string
+              finish_reason:
+                type: string
+                nullable: true
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: >
+        Returns service health status, version, and uptime.
+        This endpoint bypasses authentication.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/run:
+    post:
+      operationId: runAgent
+      summary: Run agent (sync or streaming)
+      description: |
+        Execute the agent with a prompt. Supports synchronous JSON response
+        or Server-Sent Events (SSE) streaming when `stream: true`.
+      tags: [Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunRequest"
+      responses:
+        "200":
+          description: Agent completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  SSE stream of JSON chunks when streaming=true.
+                  Ends with `data: {"type":"done","content":"full response"}`.
+        "400":
+          description: Missing required field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/chat:
+    post:
+      operationId: chatCompletion
+      summary: OpenAI-compatible chat completions
+      description: |
+        OpenAI-compatible chat endpoint. Accepts a messages array and returns
+        a chat completion object. Supports streaming in OpenAI's format.
+      tags: [Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: Chat completion generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletion"
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  SSE stream of OpenAI-compatible chat.completion.chunk objects.
+                  Ends with `data: [DONE]`.
+        "400":
+          description: Missing messages array
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/stats:
+    get:
+      operationId: getStats
+      summary: Session statistics
+      description: Returns aggregated statistics for the current session.
+      tags: [System]
+      responses:
+        "200":
+          description: Statistics returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/personas:
+    get:
+      operationId: listPersonas
+      summary: List personas
+      description: >
+        Returns all available personas loaded from the domain/personas/ directory.
+      tags: [System]
+      responses:
+        "200":
+          description: List of personas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonasResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
