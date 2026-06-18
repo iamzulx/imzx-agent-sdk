@@ -14,6 +14,7 @@ import { ReflectionEngine } from './reflection-engine.js';
 import { SkillManager } from './skill-manager.js';
 import { SelfModifier, type PerformanceMetric } from './self-modifier.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
+import { AgentEvaluator } from './agent-evaluator.js';
 
 export class AgentBrain {
   public memory: PersistentMemory;
@@ -21,6 +22,7 @@ export class AgentBrain {
   public skills: SkillManager;
   public modifier: SelfModifier;
   public graph: KnowledgeGraph;
+  public evaluator: AgentEvaluator;
 
   private taskStartTime: number = 0;
   private taskToolsUsed: string[] = [];
@@ -31,6 +33,7 @@ export class AgentBrain {
     this.skills = new SkillManager(baseDir);
     this.modifier = new SelfModifier(this.memory, this.skills, baseDir);
     this.graph = new KnowledgeGraph();
+    this.evaluator = new AgentEvaluator(this.memory, this.graph);
   }
 
   // --- Task Lifecycle ---
