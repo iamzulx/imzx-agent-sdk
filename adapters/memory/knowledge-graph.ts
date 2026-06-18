@@ -135,7 +135,7 @@ export class KnowledgeGraph {
     for (const m of message.matchAll(/https?:\/\/[^\s]+/g)) add(m[0], 'url');
     for (const m of message.matchAll(/"([^"]{3,50})"/g)) add(m[1], 'concept');
 
-    const tools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'run_command', 'search_files', 'web_search', 'web_fetch', 'calculate', 'run_code'];
+    const tools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'run_command', 'search_files', 'web_search', 'web_fetch', 'calculate', 'run_code', 'grep', 'find', 'ls', 'git', 'npm', 'cargo', 'python', 'node'];
     for (const t of tools) { if (message.includes(t)) add(t, 'tool'); }
 
     const stops = new Set(['The', 'This', 'That', 'What', 'When', 'Where', 'How', 'Why', 'Can', 'Fix', 'Add', 'Run', 'Use', 'Get', 'Set']);
