@@ -6,14 +6,14 @@
 //   [H5]  API key stored in SecretBox (zeroized on drop), error bodies redacted
 //   [L4]  Consolidated LlmProvider trait (merged provider/mod.rs duplicate)
 
+use crate::types::{Latency, Price};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use anyhow::{Result, anyhow};
+use reqwest::Client;
+use secrecy::{ExposeSecret, SecretBox};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use secrecy::{SecretBox, ExposeSecret};
-use crate::types::{Price, Latency};
 
 /// [L4 FIX] Unified LLM provider trait — merges llm.rs and provider/mod.rs.
 /// All LLM providers implement this single trait.
@@ -23,13 +23,22 @@ pub trait LlmProvider: Send + Sync {
     fn name(&self) -> &str;
 
     /// Executes a generation request.
-    async fn generate(&self, system_prompt: &str, user_prompt: &str, context: &str) -> Result<String>;
+    async fn generate(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        context: &str,
+    ) -> Result<String>;
 
     /// Current price per 1M tokens (default: normalized 1.0).
-    fn current_price(&self) -> Price { Price(1.0) }
+    fn current_price(&self) -> Price {
+        Price(1.0)
+    }
 
     /// Measured average latency in milliseconds (default: 2000ms).
-    fn current_latency(&self) -> Latency { Latency(2000.0) }
+    fn current_latency(&self) -> Latency {
+        Latency(2000.0)
+    }
 }
 
 pub struct ModelRegistry {
@@ -65,7 +74,8 @@ impl ModelRegistry {
     }
 
     pub fn get_latency(&self, name: &str) -> f32 {
-        self.metrics.read()
+        self.metrics
+            .read()
             .ok()
             .and_then(|m| m.get(name).cloned())
             .unwrap_or(2000.0)
@@ -118,7 +128,12 @@ impl LlmProvider for OpenRouterProvider {
         &self.model_name
     }
 
-    async fn generate(&self, system_prompt: &str, user_prompt: &str, context: &str) -> Result<String> {
+    async fn generate(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        context: &str,
+    ) -> Result<String> {
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -136,7 +151,8 @@ impl LlmProvider for OpenRouterProvider {
         };
 
         // [H5 FIX] Access key via ExposeSecret — never stored as plain String
-        let response = self.client
+        let response = self
+            .client
             .post("https://openrouter.ai/api/v1/chat/completions")
             .bearer_auth(self.api_key.expose_secret())
             .json(&request)

@@ -12,18 +12,18 @@
 //   [M5]  PATH detected at init, not hardcoded
 //   [L3]  Calculator returns clear error for unimplemented expressions
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use anyhow::{Result, anyhow};
-use serde::{Serialize, Deserialize};
-use std::fs;
-use std::process::Command;
-use std::net::{IpAddr, SocketAddr};
-use std::path::{Component, Path, PathBuf};
-use std::env;
 use reqwest::{self, redirect::Policy, Url};
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::net::{IpAddr, SocketAddr};
+use std::path::{Component, Path, PathBuf};
+use std::process::Command;
+use std::sync::Arc;
 
 // --- [C1 FIX] Typed ToolCall & Validation ---
 
@@ -54,7 +54,10 @@ impl ToolCall {
         }
 
         if found && !tool_name.is_empty() {
-            Some(ToolCall { tool_name, args: tool_args })
+            Some(ToolCall {
+                tool_name,
+                args: tool_args,
+            })
         } else {
             None
         }
@@ -75,7 +78,9 @@ pub struct DefaultValidator {
 
 impl DefaultValidator {
     pub fn new(tool_names: Vec<String>) -> Self {
-        Self { registered_tools: tool_names }
+        Self {
+            registered_tools: tool_names,
+        }
     }
 }
 
@@ -84,11 +89,15 @@ impl ToolCallValidator for DefaultValidator {
         if !self.registered_tools.contains(&call.tool_name) {
             return Err(anyhow!(
                 "Tool '{}' is not registered. Available: {:?}",
-                call.tool_name, self.registered_tools
+                call.tool_name,
+                self.registered_tools
             ));
         }
         if call.args.is_empty() {
-            return Err(anyhow!("Tool '{}' called with empty arguments", call.tool_name));
+            return Err(anyhow!(
+                "Tool '{}' called with empty arguments",
+                call.tool_name
+            ));
         }
         Ok(())
     }
@@ -148,7 +157,9 @@ impl FileSystemTool {
         let path = Path::new(user_path);
 
         if path.is_absolute() {
-            return Err(anyhow!("Security violation: Absolute paths are not allowed."));
+            return Err(anyhow!(
+                "Security violation: Absolute paths are not allowed."
+            ));
         }
 
         for component in path.components() {
@@ -163,7 +174,11 @@ impl FileSystemTool {
                     }
                 }
                 Component::CurDir => {}
-                _ => return Err(anyhow!("Security violation: Path traversal is not allowed.")),
+                _ => {
+                    return Err(anyhow!(
+                        "Security violation: Path traversal is not allowed."
+                    ))
+                }
             }
         }
 
@@ -174,19 +189,24 @@ impl FileSystemTool {
                 .map_err(|e| anyhow!("Invalid path: {}. Error: {}", user_path, e))?;
 
             if !canonical_full.starts_with(&self.root_dir) {
-                return Err(anyhow!("Security violation: Path is outside of the allowed directory."));
+                return Err(anyhow!(
+                    "Security violation: Path is outside of the allowed directory."
+                ));
             }
 
             return Ok(canonical_full);
         }
 
-        let parent = full_path.parent()
+        let parent = full_path
+            .parent()
             .ok_or_else(|| anyhow!("Invalid path: {}", user_path))?;
         let canonical_parent = fs::canonicalize(parent)
             .map_err(|e| anyhow!("Invalid parent path: {}. Error: {}", user_path, e))?;
 
         if !canonical_parent.starts_with(&self.root_dir) {
-            return Err(anyhow!("Security violation: Path is outside of the allowed directory."));
+            return Err(anyhow!(
+                "Security violation: Path is outside of the allowed directory."
+            ));
         }
 
         Ok(full_path)
@@ -222,12 +242,20 @@ impl FileSystemTool {
 
 #[async_trait]
 impl Tool for FileSystemTool {
-    fn name(&self) -> &str { "filesystem" }
-    fn description(&self) -> &str { "Read, write, or list files. Args: 'read <path>', 'write <path> <content>', 'list <path>'. All paths are relative to project root." }
+    fn name(&self) -> &str {
+        "filesystem"
+    }
+    fn description(&self) -> &str {
+        "Read, write, or list files. Args: 'read <path>', 'write <path> <content>', 'list <path>'. All paths are relative to project root."
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let parts: Vec<&str> = args.splitn(3, ' ').collect();
-        if parts.len() < 2 { return Err(anyhow!("Invalid args. Use 'read <path>', 'write <path> <content>', or 'list <path>'")); }
+        if parts.len() < 2 {
+            return Err(anyhow!(
+                "Invalid args. Use 'read <path>', 'write <path> <content>', or 'list <path>'"
+            ));
+        }
 
         let command = parts[0];
         let path_str = parts[1];
@@ -240,11 +268,15 @@ impl Tool for FileSystemTool {
                 Ok(ToolResult { content })
             }
             "write" => {
-                if parts.len() < 3 { return Err(anyhow!("Missing content for write operation")); }
+                if parts.len() < 3 {
+                    return Err(anyhow!("Missing content for write operation"));
+                }
                 let safe_path = self.sanitize_path(path_str, false)?;
                 let content = parts[2];
                 fs::write(&safe_path, content)?;
-                Ok(ToolResult { content: "File written successfully".to_string() })
+                Ok(ToolResult {
+                    content: "File written successfully".to_string(),
+                })
             }
             "list" => {
                 let safe_path = self.sanitize_path(path_str, true)?;
@@ -252,7 +284,11 @@ impl Tool for FileSystemTool {
                     .filter_map(|entry| {
                         entry.ok().and_then(|e| {
                             let name = e.file_name().to_string_lossy().into_owned();
-                            if name.starts_with('.') { None } else { Some(name) }
+                            if name.starts_with('.') {
+                                None
+                            } else {
+                                Some(name)
+                            }
                         })
                     })
                     .collect::<Vec<_>>()
@@ -277,26 +313,29 @@ impl ShellPolicy {
     fn get_allowed() -> Vec<(&'static str, Vec<Vec<&'static str>>)> {
         vec![
             ("ls", vec![vec![], vec!["-l"], vec!["-la"], vec!["-a"]]),
-            ("git", vec![
-                vec!["status"],
-                vec!["log"],
-                vec!["log", "--oneline"],
-                vec!["log", "--oneline", "-10"],
-                vec!["diff"],
-                vec!["branch"],
-            ]),
-            ("npm", vec![
-                vec!["test"],
-                vec!["run", "typecheck"],
-            ]),
-            ("cargo", vec![
-                vec!["build"],
-                vec!["check"],
-                vec!["test"],
-                vec!["clippy"],
-                vec!["fmt"],
-                // [H2 FIX] "cargo run" REMOVED — can compile+execute arbitrary code
-            ]),
+            (
+                "git",
+                vec![
+                    vec!["status"],
+                    vec!["log"],
+                    vec!["log", "--oneline"],
+                    vec!["log", "--oneline", "-10"],
+                    vec!["diff"],
+                    vec!["branch"],
+                ],
+            ),
+            ("npm", vec![vec!["test"], vec!["run", "typecheck"]]),
+            (
+                "cargo",
+                vec![
+                    vec!["build"],
+                    vec!["check"],
+                    vec!["test"],
+                    vec!["clippy"],
+                    vec!["fmt"],
+                    // [H2 FIX] "cargo run" REMOVED — can compile+execute arbitrary code
+                ],
+            ),
         ]
     }
 
@@ -323,11 +362,16 @@ impl ShellPolicy {
             }
             return Err(anyhow!(
                 "Security violation: Arguments {:?} not allowed for '{}'. Allowed: {:?}",
-                args, command, allowed_sets
+                args,
+                command,
+                allowed_sets
             ));
         }
 
-        Err(anyhow!("Security violation: Command '{}' is not in the allowed list.", command))
+        Err(anyhow!(
+            "Security violation: Command '{}' is not in the allowed list.",
+            command
+        ))
     }
 
     /// [M5 FIX] Detect system PATH at call time instead of hardcoding.
@@ -340,8 +384,12 @@ pub struct ShellTool;
 
 #[async_trait]
 impl Tool for ShellTool {
-    fn name(&self) -> &str { "shell" }
-    fn description(&self) -> &str { "Execute a specific set of safe shell commands. Args: '<command>'" }
+    fn name(&self) -> &str {
+        "shell"
+    }
+    fn description(&self) -> &str {
+        "Execute a specific set of safe shell commands. Args: '<command>'"
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let tokens: Vec<&str> = args.split_whitespace().collect();
@@ -355,7 +403,10 @@ impl Tool for ShellTool {
         // Defense-in-depth: block path traversal in arguments
         for token in &tokens {
             if token.contains("..") || token.starts_with('/') || token.starts_with('.') {
-                return Err(anyhow!("Security violation: Command argument '{}' is not allowed.", token));
+                return Err(anyhow!(
+                    "Security violation: Command argument '{}' is not allowed.",
+                    token
+                ));
             }
         }
 
@@ -370,7 +421,7 @@ impl Tool for ShellTool {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         Ok(ToolResult {
-            content: format!("STDOUT: {}\nSTDERR: {}", stdout, stderr)
+            content: format!("STDOUT: {}\nSTDERR: {}", stdout, stderr),
         })
     }
 }
@@ -381,8 +432,12 @@ pub struct CalculatorTool;
 
 #[async_trait]
 impl Tool for CalculatorTool {
-    fn name(&self) -> &str { "calculator" }
-    fn description(&self) -> &str { "Perform mathematical calculations. Args: '<expression>'" }
+    fn name(&self) -> &str {
+        "calculator"
+    }
+    fn description(&self) -> &str {
+        "Perform mathematical calculations. Args: '<expression>'"
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let expr = args.trim();
@@ -408,12 +463,19 @@ pub struct WebSearchTool {
 
 #[async_trait]
 impl Tool for WebSearchTool {
-    fn name(&self) -> &str { "web_search" }
-    fn description(&self) -> &str { "Search the web for real-time information. Args: '<query>'" }
+    fn name(&self) -> &str {
+        "web_search"
+    }
+    fn description(&self) -> &str {
+        "Search the web for real-time information. Args: '<query>'"
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         Ok(ToolResult {
-            content: format!("Searching the web for: '{}'... [Simulated search results for '{}']", args, args)
+            content: format!(
+                "Searching the web for: '{}'... [Simulated search results for '{}']",
+                args, args
+            ),
         })
     }
 }
@@ -445,24 +507,34 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 
 #[async_trait]
 impl Tool for WebScraperTool {
-    fn name(&self) -> &str { "web_scraper" }
-    fn description(&self) -> &str { "Read content from a URL. Args: '<url>'" }
+    fn name(&self) -> &str {
+        "web_scraper"
+    }
+    fn description(&self) -> &str {
+        "Read content from a URL. Args: '<url>'"
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let url = Url::parse(args.trim())?;
 
         // [M2 FIX] Only HTTPS is allowed — HTTP rejected
         if url.scheme() != "https" {
-            return Err(anyhow!("Security violation: Only HTTPS URLs are allowed. HTTP is rejected."));
+            return Err(anyhow!(
+                "Security violation: Only HTTPS URLs are allowed. HTTP is rejected."
+            ));
         }
 
         if url.username() != "" || url.password().is_some() {
-            return Err(anyhow!("Security violation: URL credentials are not allowed."));
+            return Err(anyhow!(
+                "Security violation: URL credentials are not allowed."
+            ));
         }
 
-        let host = url.host_str()
+        let host = url
+            .host_str()
             .ok_or_else(|| anyhow!("Invalid URL: missing host"))?;
-        let port = url.port_or_known_default()
+        let port = url
+            .port_or_known_default()
             .ok_or_else(|| anyhow!("Invalid URL: missing port"))?;
 
         // [H3 FIX] DNS rebinding elimination:
@@ -493,7 +565,9 @@ impl Tool for WebScraperTool {
 
         let response = client.get(url).send().await?;
         if response.status().is_redirection() {
-            return Err(anyhow!("Security violation: Redirects are not followed by the web scraper."));
+            return Err(anyhow!(
+                "Security violation: Redirects are not followed by the web scraper."
+            ));
         }
 
         if !response.status().is_success() {
@@ -510,7 +584,9 @@ impl Tool for WebScraperTool {
             extracted_text.push('\n');
         }
 
-        Ok(ToolResult { content: extracted_text.trim().to_string() })
+        Ok(ToolResult {
+            content: extracted_text.trim().to_string(),
+        })
     }
 }
 
@@ -520,18 +596,26 @@ pub struct DatabaseTool;
 
 #[async_trait]
 impl Tool for DatabaseTool {
-    fn name(&self) -> &str { "database" }
-    fn description(&self) -> &str { "Query the local database. Args: '<query>'. Only SELECT is allowed." }
+    fn name(&self) -> &str {
+        "database"
+    }
+    fn description(&self) -> &str {
+        "Query the local database. Args: '<query>'. Only SELECT is allowed."
+    }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let query = args.trim();
 
         let upper_query = query.to_uppercase();
         if !upper_query.starts_with("SELECT") {
-            return Err(anyhow!("Security violation: Only SELECT queries are allowed."));
+            return Err(anyhow!(
+                "Security violation: Only SELECT queries are allowed."
+            ));
         }
 
-        Ok(ToolResult { content: "Database query executed successfully. (Result simulation)".to_string() })
+        Ok(ToolResult {
+            content: "Database query executed successfully. (Result simulation)".to_string(),
+        })
     }
 }
 

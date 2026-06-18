@@ -5,10 +5,10 @@
 // Inspired by Claude Agent SDK hooks (PreToolUse, PostToolUse, AgentStart, AgentEnd).
 // Allows intercepting, logging, validating, and transforming agent behavior at key points.
 
-use async_trait::async_trait;
-use std::sync::Arc;
-use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Lifecycle events that can trigger hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,15 +18,26 @@ pub enum HookEvent {
     /// Fired before a tool is executed.
     PreToolUse { tool_name: String, args: String },
     /// Fired after a tool returns a result.
-    PostToolUse { tool_name: String, result: String, duration_ms: u64 },
+    PostToolUse {
+        tool_name: String,
+        result: String,
+        duration_ms: u64,
+    },
     /// Fired after agent produces final response.
-    AgentEnd { response: String, total_iterations: u32 },
+    AgentEnd {
+        response: String,
+        total_iterations: u32,
+    },
     /// Fired on each thinking/reasoning iteration.
     OnIteration { iteration: u32, thinking: String },
     /// Fired when an error occurs.
     OnError { error: String, context: String },
     /// Fired when budget threshold is reached (80%, 90%, 100%).
-    OnBudgetWarning { tokens_used: u64, budget_limit: u64, cost_usd: f64 },
+    OnBudgetWarning {
+        tokens_used: u64,
+        budget_limit: u64,
+        cost_usd: f64,
+    },
 }
 
 /// Result returned by hooks — can allow, reject, or transform.
@@ -104,7 +115,9 @@ pub struct AuditEntry {
 
 impl AuditHook {
     pub fn new() -> Self {
-        Self { log: std::sync::Mutex::new(Vec::new()) }
+        Self {
+            log: std::sync::Mutex::new(Vec::new()),
+        }
     }
 
     pub fn get_log(&self) -> Vec<AuditEntry> {
@@ -114,7 +127,9 @@ impl AuditHook {
 
 #[async_trait]
 impl Hook for AuditHook {
-    fn name(&self) -> &str { "audit" }
+    fn name(&self) -> &str {
+        "audit"
+    }
 
     async fn handle(&self, event: &HookEvent) -> Result<HookResult> {
         let entry = AuditEntry {
@@ -146,7 +161,9 @@ impl RateLimiterHook {
 
 #[async_trait]
 impl Hook for RateLimiterHook {
-    fn name(&self) -> &str { "rate_limiter" }
+    fn name(&self) -> &str {
+        "rate_limiter"
+    }
 
     async fn handle(&self, event: &HookEvent) -> Result<HookResult> {
         if let HookEvent::PreToolUse { .. } = event {
@@ -157,7 +174,8 @@ impl Hook for RateLimiterHook {
             if calls.len() >= self.max_calls_per_minute as usize {
                 return Ok(HookResult::Block(format!(
                     "Rate limit exceeded: {} calls in last minute (max: {})",
-                    calls.len(), self.max_calls_per_minute
+                    calls.len(),
+                    self.max_calls_per_minute
                 )));
             }
             calls.push(now);
@@ -183,15 +201,24 @@ impl CostGuardHook {
 
 #[async_trait]
 impl Hook for CostGuardHook {
-    fn name(&self) -> &str { "cost_guard" }
+    fn name(&self) -> &str {
+        "cost_guard"
+    }
 
     async fn handle(&self, event: &HookEvent) -> Result<HookResult> {
-        if let HookEvent::OnBudgetWarning { tokens_used, budget_limit, .. } = event {
+        if let HookEvent::OnBudgetWarning {
+            tokens_used,
+            budget_limit,
+            ..
+        } = event
+        {
             let pct = *tokens_used as f64 / *budget_limit as f64;
             if pct >= self.block_threshold_pct {
                 return Ok(HookResult::Block(format!(
                     "Budget exhausted: {:.0}% of limit used ({}/{})",
-                    pct * 100.0, tokens_used, budget_limit
+                    pct * 100.0,
+                    tokens_used,
+                    budget_limit
                 )));
             }
         }

@@ -5,16 +5,16 @@
 // Inspired by Claude Agent SDK subagents and Anthropic's orchestrator-workers pattern.
 // Each subagent gets its own memory, tools, and budget but shares the LLM registry.
 
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use anyhow::{Result, anyhow};
-use serde::{Serialize, Deserialize};
-use async_trait::async_trait;
 
 use crate::agent::{Agent, AgentState, BudgetConfig};
 use crate::llm::ModelRegistry;
-use crate::tools::ToolRegistry;
 use crate::memory::MemoryManager;
+use crate::tools::ToolRegistry;
 
 /// Subagent task — what to delegate to a child agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +77,8 @@ impl Subagent {
                 task_id: self.task.task_id.clone(),
                 response,
                 iterations_used: self.agent.stats.request_count as u32,
-                tokens_used: self.agent.stats.total_input_tokens + self.agent.stats.total_output_tokens,
+                tokens_used: self.agent.stats.total_input_tokens
+                    + self.agent.stats.total_output_tokens,
                 success: true,
                 error: None,
             },
@@ -85,7 +86,8 @@ impl Subagent {
                 task_id: self.task.task_id.clone(),
                 response: String::new(),
                 iterations_used: self.agent.stats.request_count as u32,
-                tokens_used: self.agent.stats.total_input_tokens + self.agent.stats.total_output_tokens,
+                tokens_used: self.agent.stats.total_input_tokens
+                    + self.agent.stats.total_output_tokens,
                 success: false,
                 error: Some(e.to_string()),
             },
@@ -103,7 +105,11 @@ pub struct SubagentOrchestrator {
 
 impl SubagentOrchestrator {
     pub fn new(llm_registry: ModelRegistry, default_model: String, max_concurrent: usize) -> Self {
-        Self { llm_registry, default_model, max_concurrent }
+        Self {
+            llm_registry,
+            default_model,
+            max_concurrent,
+        }
     }
 
     /// Execute multiple subagent tasks in parallel (bounded by max_concurrent).
@@ -148,7 +154,8 @@ impl SubagentOrchestrator {
         let mut results = Vec::with_capacity(tasks.len());
 
         for task in tasks {
-            let mut subagent = Subagent::new(task, self.llm_registry.clone(), self.default_model.clone());
+            let mut subagent =
+                Subagent::new(task, self.llm_registry.clone(), self.default_model.clone());
             results.push(subagent.execute().await);
         }
 
@@ -180,7 +187,11 @@ impl SubagentOrchestrator {
             budget_override: None,
         };
 
-        let mut synthesis_agent = Subagent::new(synthesis_task, self.llm_registry.clone(), self.default_model.clone());
+        let mut synthesis_agent = Subagent::new(
+            synthesis_task,
+            self.llm_registry.clone(),
+            self.default_model.clone(),
+        );
         synthesis_agent.execute().await
     }
 }

@@ -6,9 +6,9 @@
 // Key insight: context is a finite resource with diminishing marginal returns.
 // Must be curated, not stuffed.
 
-use std::collections::VecDeque;
-use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 /// A context entry with metadata for intelligent pruning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,11 +130,13 @@ impl ContextManager {
     pub fn render(&self) -> String {
         let mut sorted: Vec<&ContextEntry> = self.entries.iter().collect();
         sorted.sort_by(|a, b| {
-            a.priority.cmp(&b.priority)
+            a.priority
+                .cmp(&b.priority)
                 .then_with(|| a.timestamp.cmp(&b.timestamp))
         });
 
-        sorted.iter()
+        sorted
+            .iter()
             .map(|e| e.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n")
@@ -142,7 +144,8 @@ impl ContextManager {
 
     /// Render only entries of a specific role.
     pub fn render_by_role(&self, role: &ContextRole) -> String {
-        self.entries.iter()
+        self.entries
+            .iter()
             .filter(|e| &e.role == role)
             .map(|e| e.content.as_str())
             .collect::<Vec<_>>()
@@ -165,10 +168,17 @@ impl ContextManager {
             }
             CompactionStrategy::PruneOldest => {
                 // Remove oldest non-critical entries until under threshold
-                while self.usage_ratio() >= self.config.compaction_threshold && !self.entries.is_empty() {
-                    if let Some(idx) = self.entries.iter().position(|e| e.priority != Priority::Critical) {
+                while self.usage_ratio() >= self.config.compaction_threshold
+                    && !self.entries.is_empty()
+                {
+                    if let Some(idx) = self
+                        .entries
+                        .iter()
+                        .position(|e| e.priority != Priority::Critical)
+                    {
                         let removed = self.entries.remove(idx).unwrap();
-                        self.total_tokens = self.total_tokens.saturating_sub(removed.token_estimate);
+                        self.total_tokens =
+                            self.total_tokens.saturating_sub(removed.token_estimate);
                     } else {
                         break;
                     }
@@ -177,9 +187,15 @@ impl ContextManager {
             CompactionStrategy::SlidingWindow { max_per_role } => {
                 let max = *max_per_role;
                 // For each role, keep only the most recent N entries
-                let roles = [ContextRole::ToolResult, ContextRole::Observation, ContextRole::AssistantResponse];
+                let roles = [
+                    ContextRole::ToolResult,
+                    ContextRole::Observation,
+                    ContextRole::AssistantResponse,
+                ];
                 for role in &roles {
-                    let role_entries: Vec<usize> = self.entries.iter()
+                    let role_entries: Vec<usize> = self
+                        .entries
+                        .iter()
                         .enumerate()
                         .filter(|(_, e)| &e.role == role && e.priority != Priority::Critical)
                         .map(|(i, _)| i)
@@ -189,7 +205,8 @@ impl ContextManager {
                         let to_remove = &role_entries[..role_entries.len() - max];
                         for &idx in to_remove.iter().rev() {
                             if let Some(removed) = self.entries.remove(idx) {
-                                self.total_tokens = self.total_tokens.saturating_sub(removed.token_estimate);
+                                self.total_tokens =
+                                    self.total_tokens.saturating_sub(removed.token_estimate);
                             }
                         }
                     }
@@ -231,7 +248,12 @@ impl ContextManager {
 
     /// Get statistics about the context window.
     pub fn stats(&self) -> (usize, usize, f64, u32) {
-        (self.entries.len(), self.total_tokens, self.usage_ratio(), self.compaction_count)
+        (
+            self.entries.len(),
+            self.total_tokens,
+            self.usage_ratio(),
+            self.compaction_count,
+        )
     }
 
     /// Clear all non-critical entries.

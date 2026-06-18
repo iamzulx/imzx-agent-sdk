@@ -5,11 +5,11 @@
 // Inspired by Vercel AI SDK streaming patterns and OpenAI streaming API.
 // Supports chunk-by-chunk delivery with backpressure handling.
 
+use anyhow::Result;
+use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use futures::stream::Stream;
-use serde::{Serialize, Deserialize};
-use anyhow::Result;
 
 /// A single chunk of a streamed LLM response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,11 +21,17 @@ pub enum StreamChunk {
     /// Tool call argument chunk.
     ToolCallArgs { args_chunk: String },
     /// Tool call completed.
-    ToolCallComplete { tool_name: String, full_args: String },
+    ToolCallComplete {
+        tool_name: String,
+        full_args: String,
+    },
     /// Thinking/reasoning token.
     Thinking { content: String },
     /// Usage statistics.
-    Usage { input_tokens: u32, output_tokens: u32 },
+    Usage {
+        input_tokens: u32,
+        output_tokens: u32,
+    },
     /// Stream finished.
     Done { total_tokens: u32 },
     /// Error during streaming.
@@ -36,7 +42,7 @@ pub enum StreamChunk {
 pub struct StreamCollector {
     pub chunks: Vec<StreamChunk>,
     pub full_text: String,
-    pub tool_calls: Vec<(String, String)>,  // (tool_name, args)
+    pub tool_calls: Vec<(String, String)>, // (tool_name, args)
     pub total_tokens: u32,
     pub is_done: bool,
     pub error: Option<String>,
@@ -60,7 +66,10 @@ impl StreamCollector {
             StreamChunk::Text { content } => {
                 self.full_text.push_str(content);
             }
-            StreamChunk::ToolCallComplete { tool_name, full_args } => {
+            StreamChunk::ToolCallComplete {
+                tool_name,
+                full_args,
+            } => {
                 self.tool_calls.push((tool_name.clone(), full_args.clone()));
             }
             StreamChunk::Done { total_tokens } => {

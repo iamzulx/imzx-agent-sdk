@@ -1,5 +1,5 @@
-use crate::types::{Price, Latency, Score};
 use crate::provider::LlmProvider;
+use crate::types::{Latency, Price, Score};
 use std::sync::Arc;
 
 /// Weighs price and latency to determine the best provider.
@@ -17,7 +17,10 @@ impl WeightedScorer {
         let total = price_weight + latency_weight;
         if total == 0.0 {
             // Fallback to equal weighting if both are zero
-            return Self { price_weight: 0.5, latency_weight: 0.5 };
+            return Self {
+                price_weight: 0.5,
+                latency_weight: 0.5,
+            };
         }
 
         Self {
@@ -28,7 +31,12 @@ impl WeightedScorer {
 
     /// Calculates a score for a provider based on relative performance vs best knowns.
     /// Score = (weight_p * (current_p / best_p)) + (weight_l * (current_l / best_l))
-    pub fn calculate_score<P: LlmProvider>(&self, provider: &P, best_price: Price, best_latency: Latency) -> Score {
+    pub fn calculate_score<P: LlmProvider>(
+        &self,
+        provider: &P,
+        best_price: Price,
+        best_latency: Latency,
+    ) -> Score {
         let p_ratio = provider.current_price().0 / best_price.0;
         let l_ratio = provider.current_latency().0 / best_latency.0;
 
@@ -40,14 +48,16 @@ impl WeightedScorer {
         &self,
         providers: &[Arc<P>],
         best_price: Price,
-        best_latency: Latency
+        best_latency: Latency,
     ) -> Option<Arc<P>> {
         providers
             .iter()
             .min_by(|a, b| {
                 let score_a = self.calculate_score(a.as_ref(), best_price, best_latency);
                 let score_b = self.calculate_score(b.as_ref(), best_price, best_latency);
-                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+                score_a
+                    .partial_cmp(&score_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .cloned()
     }

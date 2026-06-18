@@ -5,40 +5,44 @@
 // v2.0 — Added hooks, subagents, streaming, context management, MCP.
 // Security: M1 fix (napi::Result error propagation).
 
-use pyo3::prelude::*;
-use once_cell::sync::Lazy;
-use tokio::runtime::Runtime;
-use std::sync::Arc;
-use napi_derive::napi;
 use napi::Status;
+use napi_derive::napi;
+use once_cell::sync::Lazy;
+use pyo3::prelude::*;
+use std::sync::Arc;
+use tokio::runtime::Runtime;
 
-pub mod types;
+pub mod agent;
+pub mod context_manager;
+pub mod embedding;
 pub mod error;
+pub mod hooks;
 pub mod llm;
+pub mod memory;
+pub mod orchestration;
 pub mod provider;
 pub mod strategy;
-pub mod agent;
-pub mod tools;
-pub mod memory;
-pub mod embedding;
-pub mod orchestration;
-pub mod hooks;
-pub mod subagent;
 pub mod streaming;
-pub mod context_manager;
+pub mod subagent;
+pub mod tools;
+pub mod types;
 
-pub use types::*;
+pub use agent::Agent;
+pub use context_manager::{
+    CompactionStrategy, ContextConfig, ContextEntry, ContextManager, ContextRole, Priority,
+};
+pub use embedding::LocalEmbedder;
 pub use error::*;
+pub use hooks::{
+    AuditHook, CostGuardHook, Hook, HookEvent, HookRegistry, HookResult, RateLimiterHook,
+};
+pub use memory::MemoryManager;
 pub use provider::*;
 pub use strategy::*;
-pub use agent::Agent;
-pub use tools::ToolRegistry;
-pub use memory::MemoryManager;
-pub use embedding::LocalEmbedder;
-pub use hooks::{HookRegistry, HookEvent, HookResult, Hook, AuditHook, RateLimiterHook, CostGuardHook};
-pub use subagent::{Subagent, SubagentOrchestrator, SubagentTask, SubagentResult};
 pub use streaming::{StreamChunk, StreamCollector, StreamConfig, TokenStream};
-pub use context_manager::{ContextManager, ContextConfig, ContextEntry, Priority, ContextRole, CompactionStrategy};
+pub use subagent::{Subagent, SubagentOrchestrator, SubagentResult, SubagentTask};
+pub use tools::ToolRegistry;
+pub use types::*;
 
 // Global Tokio Runtime
 pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -70,9 +74,9 @@ impl PyAgent {
     }
 
     fn run(&mut self, input: String) -> PyResult<String> {
-        let result = RUNTIME.block_on(async {
-            self.inner.run(&input).await
-        }).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let result = RUNTIME
+            .block_on(async { self.inner.run(&input).await })
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         Ok(result)
     }
@@ -91,7 +95,11 @@ impl TsAgent {
     #[napi(constructor)]
     pub fn new(name: String, description: String, prompt: String) -> Self {
         TsAgent {
-            inner: Arc::new(tokio::sync::Mutex::new(Agent::new(name, description, prompt))),
+            inner: Arc::new(tokio::sync::Mutex::new(Agent::new(
+                name,
+                description,
+                prompt,
+            ))),
         }
     }
 
@@ -99,9 +107,10 @@ impl TsAgent {
     #[napi]
     pub async fn run(&self, prompt: String) -> napi::Result<String> {
         let mut agent = self.inner.lock().await;
-        agent.run(&prompt).await.map_err(|e| {
-            napi::Error::new(Status::GenericFailure, e.to_string())
-        })
+        agent
+            .run(&prompt)
+            .await
+            .map_err(|e| napi::Error::new(Status::GenericFailure, e.to_string()))
     }
 
     /// Get current agent state as a JSON string.
@@ -119,7 +128,10 @@ impl TsAgent {
         let stats = &agent.stats;
         Ok(format!(
             r#"{{"total_input_tokens": {}, "total_output_tokens": {}, "total_cost_usd": {:.6}, "request_count": {}}}"#,
-            stats.total_input_tokens, stats.total_output_tokens, stats.total_cost_usd, stats.request_count
+            stats.total_input_tokens,
+            stats.total_output_tokens,
+            stats.total_cost_usd,
+            stats.request_count
         ))
     }
 

@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
-use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MemoryEntry {
@@ -35,7 +35,9 @@ impl MemoryManager {
     fn prune_memory(&mut self) {
         // Use a simple heuristic for token counting (1 token approx 4 characters)
         // This avoids the heavy 'tokenizers' dependency that crashes in Termux
-        let mut current_tokens = self.history.iter()
+        let mut current_tokens = self
+            .history
+            .iter()
             .map(|m| m.content.len() / 4)
             .sum::<usize>();
 
@@ -56,7 +58,8 @@ impl MemoryManager {
 
     /// Performs semantic search using cosine similarity
     pub fn semantic_search(&self, query_embedding: &[f32], top_k: usize) -> Vec<MemoryEntry> {
-        let mut scored_entries: Vec<(f32, &MemoryEntry)> = self.history
+        let mut scored_entries: Vec<(f32, &MemoryEntry)> = self
+            .history
             .iter()
             .filter_map(|entry| {
                 entry.embedding.as_ref().map(|emb| {
@@ -77,7 +80,9 @@ impl MemoryManager {
     }
 
     fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() { return 0.0; }
+        if a.len() != b.len() {
+            return 0.0;
+        }
 
         let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
         let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();

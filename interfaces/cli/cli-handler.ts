@@ -104,7 +104,7 @@ export class CliHandler {
 
     const personaName = persona || 'general-purpose';
     const runOptions: RunOptions = {
-      streaming: options.stream ?? true,
+      streaming: options.stream ? options.stream !== 'false' : true,
       budget: {
         maxTokens: options['budget-tokens'] ? parseInt(options['budget-tokens']) : undefined,
         budgetUsd: options['budget-usd'] ? parseFloat(options['budget-usd']) : undefined,

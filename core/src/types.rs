@@ -1,5 +1,5 @@
-use std::ops::Add;
 use std::cmp::Ordering;
+use std::ops::Add;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Score(pub f32);

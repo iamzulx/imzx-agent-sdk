@@ -5,15 +5,17 @@
 // Security fixes: C1 (typed ToolCall), M3 (UntrustedObservation), M4 (budget cap)
 // v2.0 additions: hooks integration, context management, streaming support.
 
-use std::fmt;
-use crate::tools::{ToolRegistry, ToolCall, UntrustedObservation};
-use crate::memory::MemoryManager;
+use crate::context_manager::{
+    estimate_tokens, ContextConfig, ContextEntry, ContextManager, ContextRole, Priority,
+};
 use crate::embedding::LocalEmbedder;
+use crate::hooks::{HookEvent, HookRegistry, HookResult};
 use crate::llm::{LlmProvider, ModelRegistry};
-use crate::orchestration::{Orchestrator, OrchestrationStrategy, AgentRole};
-use crate::hooks::{HookRegistry, HookEvent, HookResult};
-use crate::context_manager::{ContextManager, ContextConfig, ContextEntry, ContextRole, Priority, estimate_tokens};
-use anyhow::{Result, anyhow};
+use crate::memory::MemoryManager;
+use crate::orchestration::{AgentRole, OrchestrationStrategy, Orchestrator};
+use crate::tools::{ToolCall, ToolRegistry, UntrustedObservation};
+use anyhow::{anyhow, Result};
+use std::fmt;
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionStats {
@@ -121,7 +123,10 @@ impl Agent {
     }
 
     pub fn set_budget(&mut self, max_tokens: u64, budget_usd: f64) {
-        self.budget = BudgetConfig { max_tokens, budget_usd };
+        self.budget = BudgetConfig {
+            max_tokens,
+            budget_usd,
+        };
     }
 
     fn check_budget(&self) -> Result<()> {
@@ -129,13 +134,15 @@ impl Agent {
         if total_tokens >= self.budget.max_tokens {
             return Err(anyhow!(
                 "Budget exceeded: {} tokens used (limit: {}). Halting to prevent cost overrun.",
-                total_tokens, self.budget.max_tokens
+                total_tokens,
+                self.budget.max_tokens
             ));
         }
         if self.stats.total_cost_usd >= self.budget.budget_usd {
             return Err(anyhow!(
                 "Budget exceeded: ${:.4} spent (limit: ${:.2}). Halting to prevent cost overrun.",
-                self.stats.total_cost_usd, self.budget.budget_usd
+                self.stats.total_cost_usd,
+                self.budget.budget_usd
             ));
         }
         Ok(())
@@ -155,7 +162,9 @@ impl Agent {
     pub async fn run(&mut self, input: &str) -> Result<String> {
         // Fire AgentStart hook
         self.state = AgentState::Planning;
-        let start_event = HookEvent::AgentStart { input: input.to_string() };
+        let start_event = HookEvent::AgentStart {
+            input: input.to_string(),
+        };
         if let HookResult::Block(reason) = self.hooks.execute(&start_event).await? {
             return Err(anyhow!("Agent blocked by hook: {}", reason));
         }
@@ -195,10 +204,13 @@ impl Agent {
         for iteration in 0..self.max_iterations {
             // Budget check before each iteration
             if let Err(e) = self.check_budget() {
-                let _ = self.hooks.execute(&HookEvent::OnError {
-                    error: e.to_string(),
-                    context: "budget_check".to_string(),
-                }).await;
+                let _ = self
+                    .hooks
+                    .execute(&HookEvent::OnError {
+                        error: e.to_string(),
+                        context: "budget_check".to_string(),
+                    })
+                    .await;
                 return Err(e);
             }
 
@@ -212,21 +224,30 @@ impl Agent {
 
             // Select model via orchestrator
             let model_name = match self.orchestrator.get_execution_plan() {
-                crate::orchestration::ExecutionPlan::Single => {
-                    self.orchestrator.route_selection(&self.llm_registry)
-                        .unwrap_or_else(|| self.default_model.clone())
-                }
+                crate::orchestration::ExecutionPlan::Single => self
+                    .orchestrator
+                    .route_selection(&self.llm_registry)
+                    .unwrap_or_else(|| self.default_model.clone()),
                 _ => self.default_model.clone(),
             };
 
             // Get LLM provider
-            let provider = self.llm_registry.get(&model_name)
+            let provider = self
+                .llm_registry
+                .get(&model_name)
                 .or_else(|| self.llm_registry.get(&self.default_model))
-                .ok_or_else(|| anyhow!("No LLM provider available. Registered: {:?}", self.llm_registry.list()))?;
+                .ok_or_else(|| {
+                    anyhow!(
+                        "No LLM provider available. Registered: {:?}",
+                        self.llm_registry.list()
+                    )
+                })?;
 
             // Generate response
             self.state = AgentState::Thinking;
-            let response = provider.generate(&self.prompt, input, &full_context).await?;
+            let response = provider
+                .generate(&self.prompt, input, &full_context)
+                .await?;
 
             // Track token usage (heuristic estimation)
             let input_tokens = (full_context.len() / 4) as u64;
@@ -239,10 +260,14 @@ impl Agent {
                 + (output_tokens as f64 * price * 2.0 / 1_000_000.0);
 
             // Fire OnIteration hook
-            if let HookResult::Block(reason) = self.hooks.execute(&HookEvent::OnIteration {
-                iteration,
-                thinking: response.clone(),
-            }).await? {
+            if let HookResult::Block(reason) = self
+                .hooks
+                .execute(&HookEvent::OnIteration {
+                    iteration,
+                    thinking: response.clone(),
+                })
+                .await?
+            {
                 return Err(anyhow!("Iteration blocked by hook: {}", reason));
             }
 
@@ -290,7 +315,8 @@ impl Agent {
                         let result = self.tool_registry.execute_tool(&transformed_call).await;
                         let duration_ms = tool_start.elapsed().as_millis() as u64;
 
-                        self.process_tool_result(&transformed_call.tool_name, result, duration_ms).await?;
+                        self.process_tool_result(&transformed_call.tool_name, result, duration_ms)
+                            .await?;
                     }
                     HookResult::Continue => {
                         // Normal execution
@@ -298,7 +324,8 @@ impl Agent {
                         let result = self.tool_registry.execute_tool(&tool_call).await;
                         let duration_ms = tool_start.elapsed().as_millis() as u64;
 
-                        self.process_tool_result(&tool_call.tool_name, result, duration_ms).await?;
+                        self.process_tool_result(&tool_call.tool_name, result, duration_ms)
+                            .await?;
                     }
                 }
 
@@ -321,10 +348,13 @@ impl Agent {
         }
 
         // Fire AgentEnd hook
-        let _ = self.hooks.execute(&HookEvent::AgentEnd {
-            response: final_response.clone(),
-            total_iterations: self.stats.request_count as u32,
-        }).await;
+        let _ = self
+            .hooks
+            .execute(&HookEvent::AgentEnd {
+                response: final_response.clone(),
+                total_iterations: self.stats.request_count as u32,
+            })
+            .await;
 
         self.state = AgentState::Idle;
         Ok(final_response)

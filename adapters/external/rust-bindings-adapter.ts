@@ -7,6 +7,7 @@
  * 2. Fall back to TypeScript AgentEngine (real LLM API calls)
  */
 
+import module from 'node:module';
 import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../../domain/ports/agent-engine.js';
 import { AgentEngine, type AgentEngineConfig } from './agent-engine.js';
 
@@ -40,7 +41,7 @@ export class RustBindingsAdapter implements AgentEnginePort {
     // Try native NAPI first
     if (!this.nativeAgent) {
       try {
-        const { createRequire } = await import('node:module');
+        const createRequire = module.createRequire;
         const require = createRequire(import.meta.url);
         const candidates = [
           '../../core/target/release/imzx_core.linux-arm64-gnu.node',
@@ -59,7 +60,7 @@ export class RustBindingsAdapter implements AgentEnginePort {
     } else if (this.useNative) {
       // Reinitialize native agent
       try {
-        const { createRequire } = await import('node:module');
+        const createRequire = module.createRequire;
         const require = createRequire(import.meta.url);
         const mod = require('../../core/target/release/imzx_core.linux-arm64-gnu.node');
         this.nativeAgent = new mod.TsAgent(id, description, prompt);

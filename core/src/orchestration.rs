@@ -5,12 +5,12 @@
 // v2.0 — Added routing, parallelization, evaluator-optimizer, prompt chaining.
 // Based on Anthropic's "Building Effective Agents" patterns.
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use crate::llm::{LlmProvider, ModelRegistry};
 use crate::strategy::WeightedScorer;
-use crate::types::{Price, Latency};
-use anyhow::{Result, anyhow};
+use crate::types::{Latency, Price};
+use anyhow::{anyhow, Result};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrchestrationStrategy {
@@ -111,40 +111,51 @@ impl Orchestrator {
         match self.strategy {
             OrchestrationStrategy::Router => ExecutionPlan::Single,
             OrchestrationStrategy::Hierarchical => {
-                let head = self.role_map.get_model(AgentRole::Head)
-                    .unwrap_or(&"default".to_string()).clone();
-                let worker = self.role_map.get_model(AgentRole::Worker)
-                    .unwrap_or(&"default".to_string()).clone();
+                let head = self
+                    .role_map
+                    .get_model(AgentRole::Head)
+                    .unwrap_or(&"default".to_string())
+                    .clone();
+                let worker = self
+                    .role_map
+                    .get_model(AgentRole::Worker)
+                    .unwrap_or(&"default".to_string())
+                    .clone();
                 ExecutionPlan::Sequence(vec![head, worker])
             }
             OrchestrationStrategy::Consensus => {
-                let judge = self.role_map.get_model(AgentRole::Judge)
-                    .unwrap_or(&"default".to_string()).clone();
+                let judge = self
+                    .role_map
+                    .get_model(AgentRole::Judge)
+                    .unwrap_or(&"default".to_string())
+                    .clone();
                 ExecutionPlan::Consensus {
                     workers: vec!["default".to_string()],
                     judge,
                 }
             }
-            OrchestrationStrategy::Chaining => {
-                ExecutionPlan::Chaining { steps: vec![] }
-            }
+            OrchestrationStrategy::Chaining => ExecutionPlan::Chaining { steps: vec![] },
             OrchestrationStrategy::EvaluatorOptimizer => {
-                let generator = self.role_map.get_model(AgentRole::Worker)
-                    .unwrap_or(&"default".to_string()).clone();
-                let evaluator = self.role_map.get_model(AgentRole::Evaluator)
-                    .unwrap_or(&"default".to_string()).clone();
+                let generator = self
+                    .role_map
+                    .get_model(AgentRole::Worker)
+                    .unwrap_or(&"default".to_string())
+                    .clone();
+                let evaluator = self
+                    .role_map
+                    .get_model(AgentRole::Evaluator)
+                    .unwrap_or(&"default".to_string())
+                    .clone();
                 ExecutionPlan::EvaluatorOptimizer {
                     generator,
                     evaluator,
                     max_rounds: 3,
                 }
             }
-            OrchestrationStrategy::Parallelization => {
-                ExecutionPlan::Parallelization {
-                    models: vec!["default".to_string()],
-                    aggregator: "default".to_string(),
-                }
-            }
+            OrchestrationStrategy::Parallelization => ExecutionPlan::Parallelization {
+                models: vec!["default".to_string()],
+                aggregator: "default".to_string(),
+            },
         }
     }
 
@@ -161,15 +172,20 @@ impl Orchestrator {
         let best_price = Price(1.0);
         let best_latency = Latency(1000.0);
 
-        let mut scored: Vec<(String, f32)> = providers.iter().map(|name| {
-            let latency = registry.get_latency(name);
-            let score = if let Some(provider) = registry.get(name) {
-                scorer.calculate_score(&*provider, best_price, best_latency).0
-            } else {
-                f32::MAX
-            };
-            (name.clone(), score)
-        }).collect();
+        let mut scored: Vec<(String, f32)> = providers
+            .iter()
+            .map(|name| {
+                let latency = registry.get_latency(name);
+                let score = if let Some(provider) = registry.get(name) {
+                    scorer
+                        .calculate_score(&*provider, best_price, best_latency)
+                        .0
+                } else {
+                    f32::MAX
+                };
+                (name.clone(), score)
+            })
+            .collect();
 
         scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.first().map(|(name, _)| name.clone())
@@ -179,9 +195,12 @@ impl Orchestrator {
     pub fn classify_complexity(&self, input: &str) -> ComplexityLevel {
         // Heuristic classification
         let word_count = input.split_whitespace().count();
-        let has_code = input.contains("```") || input.contains("fn ") || input.contains("function ");
-        let has_multi_step = input.contains("step") || input.contains("first") || input.contains("then");
-        let has_analysis = input.contains("analyze") || input.contains("explain") || input.contains("compare");
+        let has_code =
+            input.contains("```") || input.contains("fn ") || input.contains("function ");
+        let has_multi_step =
+            input.contains("step") || input.contains("first") || input.contains("then");
+        let has_analysis =
+            input.contains("analyze") || input.contains("explain") || input.contains("compare");
 
         if word_count > 200 || (has_code && has_multi_step) {
             ComplexityLevel::Complex

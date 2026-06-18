@@ -1,5 +1,5 @@
-use candle_core::{Device, Tensor};
 use anyhow::Result;
+use candle_core::{Device, Tensor};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 

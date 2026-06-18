@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::error::RouterResult;
-use crate::types::{Price, Latency};
+use crate::types::{Latency, Price};
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
