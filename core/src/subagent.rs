@@ -5,16 +5,10 @@
 // Inspired by Claude Agent SDK subagents and Anthropic's orchestrator-workers pattern.
 // Each subagent gets its own memory, tools, and budget but shares the LLM registry.
 
-use anyhow::{anyhow, Result};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-use crate::agent::{Agent, AgentState, BudgetConfig};
+use crate::agent::{Agent, BudgetConfig};
 use crate::llm::ModelRegistry;
-use crate::memory::MemoryManager;
-use crate::tools::ToolRegistry;
 
 /// Subagent task — what to delegate to a child agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]

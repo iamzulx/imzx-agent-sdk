@@ -5,11 +5,7 @@
 // Inspired by Vercel AI SDK streaming patterns and OpenAI streaming API.
 // Supports chunk-by-chunk delivery with backpressure handling.
 
-use anyhow::Result;
-use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 /// A single chunk of a streamed LLM response.
 #[derive(Debug, Clone, Serialize, Deserialize)]

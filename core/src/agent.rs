@@ -68,25 +68,27 @@ impl Default for BudgetConfig {
 }
 
 /// Main agent struct — ReAct loop with hooks, context management, and streaming.
+/// [A1 FIX] Fields are pub(crate) to limit external access; use accessor methods.
 pub struct Agent {
-    pub name: String,
-    pub description: String,
-    pub prompt: String,
-    pub state: AgentState,
-    pub tool_registry: ToolRegistry,
-    pub memory: MemoryManager,
-    pub embedder: Option<LocalEmbedder>,
-    pub llm_registry: ModelRegistry,
-    pub orchestrator: Orchestrator,
-    pub default_model: String,
-    pub stats: SessionStats,
-    pub budget: BudgetConfig,
+    pub(crate) name: String,
+    #[allow(dead_code)]
+    pub(crate) description: String,
+    pub(crate) prompt: String,
+    pub(crate) state: AgentState,
+    pub(crate) tool_registry: ToolRegistry,
+    pub(crate) memory: MemoryManager,
+    pub(crate) embedder: Option<LocalEmbedder>,
+    pub(crate) llm_registry: ModelRegistry,
+    pub(crate) orchestrator: Orchestrator,
+    pub(crate) default_model: String,
+    pub(crate) stats: SessionStats,
+    pub(crate) budget: BudgetConfig,
     /// Hook registry for middleware lifecycle events.
-    pub hooks: HookRegistry,
+    pub(crate) hooks: HookRegistry,
     /// Context manager for token budgeting and compaction.
-    pub context: ContextManager,
+    pub(crate) context: ContextManager,
     /// Maximum iterations before forced stop.
-    pub max_iterations: u32,
+    pub(crate) max_iterations: u32,
 }
 
 impl Agent {
@@ -119,6 +121,42 @@ impl Agent {
             self.stats.total_output_tokens,
             self.stats.total_cost_usd
         )
+    }
+
+    // [A1 FIX] Accessor methods for external access
+    /// Get the current agent state.
+    pub fn state(&self) -> &AgentState {
+        &self.state
+    }
+
+    /// Get session statistics.
+    pub fn stats(&self) -> &SessionStats {
+        &self.stats
+    }
+
+    /// Get the agent name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the system prompt.
+    pub fn prompt(&self) -> &str {
+        &self.prompt
+    }
+
+    /// Get the default model name.
+    pub fn default_model(&self) -> &str {
+        &self.default_model
+    }
+
+    /// Get mutable reference to the LLM registry (for registering providers).
+    pub fn llm_registry_mut(&mut self) -> &mut ModelRegistry {
+        &mut self.llm_registry
+    }
+
+    /// Get the budget configuration.
+    pub fn budget(&self) -> &BudgetConfig {
+        &self.budget
     }
 
     pub fn set_budget(&mut self, max_tokens: u64, budget_usd: f64) {
@@ -168,15 +206,19 @@ impl Agent {
             return Err(anyhow!("Agent blocked by hook: {}", reason));
         }
 
-        // Add system prompt to context
-        self.context.push(ContextEntry {
-            content: self.prompt.clone(),
-            role: ContextRole::System,
-            token_estimate: estimate_tokens(&self.prompt),
-            priority: Priority::Critical,
-            source: "system".to_string(),
-            timestamp: 0,
-        });
+        // [C1/S8 FIX] Only add system prompt if not already present in context
+        // (prevents duplication across multiple run() calls)
+        let has_system = self.context.has_entry_with_source("system");
+        if !has_system {
+            self.context.push(ContextEntry {
+                content: self.prompt.clone(),
+                role: ContextRole::System,
+                token_estimate: estimate_tokens(&self.prompt),
+                priority: Priority::Critical,
+                source: "system".to_string(),
+                timestamp: 0,
+            });
+        }
 
         // Add user input to context
         self.context.push(ContextEntry {
@@ -215,7 +257,10 @@ impl Agent {
             }
 
             // Build the full context for this iteration
-            let context_str = self.context.render();
+            // [C7 FIX] Exclude System role entries from context render — they are already
+            // passed as the system_prompt parameter to generate(), so including them
+            // in context would duplicate the system prompt in the LLM call.
+            let context_str = self.context.render_excluding_role(&ContextRole::System);
             let full_context = if augmented.is_empty() {
                 context_str
             } else {
@@ -249,9 +294,9 @@ impl Agent {
                 .generate(&self.prompt, input, &full_context)
                 .await?;
 
-            // Track token usage (heuristic estimation)
-            let input_tokens = (full_context.len() / 4) as u64;
-            let output_tokens = (response.len() / 4) as u64;
+            // [C2 FIX] Use estimate_tokens() consistently (not raw len/4 heuristic)
+            let input_tokens = estimate_tokens(&full_context) as u64;
+            let output_tokens = estimate_tokens(&response) as u64;
             self.stats.total_input_tokens += input_tokens;
             self.stats.total_output_tokens += output_tokens;
             self.stats.request_count += 1;
@@ -352,6 +397,15 @@ impl Agent {
 
                 break;
             }
+        }
+
+        // [C3 FIX] Return error if max_iterations exhausted without a final response
+        if final_response.is_empty() {
+            return Err(anyhow!(
+                "Agent reached maximum iterations ({}) without producing a final response. \
+                 The task may be too complex or the model may be stuck in a tool-calling loop.",
+                self.max_iterations
+            ));
         }
 
         // Fire AgentEnd hook

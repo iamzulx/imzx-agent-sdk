@@ -30,15 +30,11 @@ pub trait LlmProvider: Send + Sync {
         context: &str,
     ) -> Result<String>;
 
-    /// Current price per 1M tokens (default: normalized 1.0).
-    fn current_price(&self) -> Price {
-        Price(1.0)
-    }
+    /// Current price per 1M tokens. Must be explicitly provided by each provider.
+    fn current_price(&self) -> Price;
 
-    /// Measured average latency in milliseconds (default: 2000ms).
-    fn current_latency(&self) -> Latency {
-        Latency(2000.0)
-    }
+    /// Measured average latency in milliseconds. Must be explicitly provided by each provider.
+    fn current_latency(&self) -> Latency;
 }
 #[derive(Default, Clone)]
 pub struct ModelRegistry {
@@ -106,11 +102,13 @@ struct Choice {
 /// [H5 FIX] API key is wrapped in SecretBox — zeroized on drop.
 /// The key is never exposed as plaintext String in the struct field.
 pub struct OpenRouterProvider {
-    pub api_key: SecretBox<String>,
+    api_key: SecretBox<String>,
     pub model_name: String,
     pub client: Client,
 }
 
+// NOTE [S12]: All requests go to openrouter.ai. Provider-specific features
+// (e.g., Anthropic prompt caching, Google grounding) are not available.
 impl OpenRouterProvider {
     pub fn new(api_key: String, model_name: String) -> Self {
         Self {
@@ -125,6 +123,14 @@ impl OpenRouterProvider {
 impl LlmProvider for OpenRouterProvider {
     fn name(&self) -> &str {
         &self.model_name
+    }
+
+    fn current_price(&self) -> Price {
+        Price(3.0) // Default OpenRouter estimate per 1M tokens
+    }
+
+    fn current_latency(&self) -> Latency {
+        Latency(2000.0) // Default latency estimate
     }
 
     async fn generate(

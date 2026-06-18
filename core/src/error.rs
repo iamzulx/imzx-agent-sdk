@@ -1,6 +1,9 @@
 use thiserror::Error;
 
+/// Router-level errors for LLM provider orchestration.
+/// Available for use by custom provider implementations and orchestration logic.
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum RouterError {
     #[error("Network error occurred: {0}")]
     Network(String),

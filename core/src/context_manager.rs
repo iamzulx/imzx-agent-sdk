@@ -6,7 +6,6 @@
 // Key insight: context is a finite resource with diminishing marginal returns.
 // Must be curated, not stuffed.
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -152,9 +151,34 @@ impl ContextManager {
             .join("\n\n")
     }
 
+    /// [C7 FIX] Render all entries EXCEPT those with the given role.
+    /// Used to exclude System entries when they're already passed as system_prompt.
+    pub fn render_excluding_role(&self, excluded: &ContextRole) -> String {
+        let mut sorted: Vec<&ContextEntry> = self
+            .entries
+            .iter()
+            .filter(|e| &e.role != excluded)
+            .collect();
+        sorted.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then_with(|| a.timestamp.cmp(&b.timestamp))
+        });
+        sorted
+            .iter()
+            .map(|e| e.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    /// [C1/S8 FIX] Check if any entry has the given source identifier.
+    pub fn has_entry_with_source(&self, source: &str) -> bool {
+        self.entries.iter().any(|e| e.source == source)
+    }
+
     /// Run compaction based on the configured strategy.
     pub fn compact(&mut self) {
-        match &self.config.strategy.clone() {
+        match &self.config.strategy {
             CompactionStrategy::PriorityBased => {
                 // First: remove all Disposable entries
                 self.entries.retain(|e| e.priority != Priority::Disposable);
@@ -213,10 +237,14 @@ impl ContextManager {
                 }
             }
             CompactionStrategy::Summarize => {
-                // Summarize is a no-op at the Rust level — requires LLM call.
-                // Fallback to PriorityBased pruning.
-                self.config.strategy = CompactionStrategy::PriorityBased;
-                self.compact();
+                // [C5 FIX] Summarize is a no-op at the Rust level — requires LLM call.
+                // Inline PriorityBased pruning WITHOUT permanently changing config strategy.
+                self.entries.retain(|e| e.priority != Priority::Disposable);
+                self.recalculate_tokens();
+                if self.usage_ratio() >= self.config.compaction_threshold {
+                    self.entries.retain(|e| e.priority != Priority::Low);
+                    self.recalculate_tokens();
+                }
                 return;
             }
         }

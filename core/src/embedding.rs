@@ -1,5 +1,5 @@
 use anyhow::Result;
-use candle_core::{Device, Tensor};
+use candle_core::Device;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -29,8 +29,8 @@ impl LocalEmbedder {
         let hash = hasher.finish();
 
         let mut embedding = vec![0.0; 768];
-        for i in 0..768 {
-            embedding[i] = ((hash >> (i % 64)) as f32 / u64::MAX as f32) - 0.5;
+        for (i, val) in embedding.iter_mut().enumerate() {
+            *val = ((hash >> (i % 64)) as f32 / u64::MAX as f32) - 0.5;
         }
 
         Ok(embedding)

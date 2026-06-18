@@ -3,6 +3,18 @@ use std::ops::Add;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Score(pub f32);
+
+impl Score {
+    /// Create a Score, returning None if the value is NaN.
+    pub fn new(value: f32) -> Option<Self> {
+        if value.is_nan() {
+            None
+        } else {
+            Some(Self(value))
+        }
+    }
+}
+
 impl PartialOrd for Score {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -11,6 +23,18 @@ impl PartialOrd for Score {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Price(pub f32);
+
+impl Price {
+    /// Create a Price, returning None if the value is NaN or negative.
+    pub fn new(value: f32) -> Option<Self> {
+        if value.is_nan() || value < 0.0 {
+            None
+        } else {
+            Some(Self(value))
+        }
+    }
+}
+
 impl PartialOrd for Price {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -19,6 +43,18 @@ impl PartialOrd for Price {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Latency(pub f32);
+
+impl Latency {
+    /// Create a Latency, returning None if the value is NaN or negative.
+    pub fn new(value: f32) -> Option<Self> {
+        if value.is_nan() || value < 0.0 {
+            None
+        } else {
+            Some(Self(value))
+        }
+    }
+}
+
 impl PartialOrd for Latency {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))

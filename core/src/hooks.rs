@@ -62,6 +62,9 @@ pub trait Hook: Send + Sync {
 }
 
 /// Hook registry — manages and executes hooks in order.
+/// Hooks execute in registration order (FIFO). The first hook to return
+/// Block or Transform short-circuits execution — subsequent hooks are skipped.
+/// Execution order: AgentStart → [PreToolUse → Tool → PostToolUse]* → AgentEnd.
 #[derive(Default)]
 pub struct HookRegistry {
     hooks: Vec<Arc<dyn Hook>>,
@@ -90,6 +93,22 @@ impl HookRegistry {
         Ok(HookResult::Continue)
     }
 
+    /// Fire OnBudgetWarning hooks if any are registered.
+    /// Call this from the agent when budget thresholds are crossed.
+    pub async fn fire_budget_warning(
+        &self,
+        tokens_used: u64,
+        budget_limit: u64,
+        cost_usd: f64,
+    ) -> Result<HookResult> {
+        self.execute(&HookEvent::OnBudgetWarning {
+            tokens_used,
+            budget_limit,
+            cost_usd,
+        })
+        .await
+    }
+
     /// Number of registered hooks.
     pub fn len(&self) -> usize {
         self.hooks.len()
@@ -103,6 +122,7 @@ impl HookRegistry {
 // --- Built-in Hooks ---
 
 /// Audit hook — logs all tool calls for security auditing.
+#[derive(Default)]
 pub struct AuditHook {
     log: std::sync::Mutex<Vec<AuditEntry>>,
 }
@@ -122,7 +142,8 @@ impl AuditHook {
     }
 
     pub fn get_log(&self) -> Vec<AuditEntry> {
-        self.log.lock().unwrap().clone()
+        // [S9 FIX] Handle mutex poison gracefully instead of panicking
+        self.log.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -169,7 +190,8 @@ impl Hook for RateLimiterHook {
     async fn handle(&self, event: &HookEvent) -> Result<HookResult> {
         if let HookEvent::PreToolUse { .. } = event {
             let now = std::time::Instant::now();
-            let mut calls = self.calls.lock().unwrap();
+            // [S9 FIX] Handle mutex poison gracefully instead of panicking
+            let mut calls = self.calls.lock().unwrap_or_else(|e| e.into_inner());
             // Remove calls older than 1 minute
             calls.retain(|t| now.duration_since(*t).as_secs() < 60);
             if calls.len() >= self.max_calls_per_minute as usize {
@@ -187,6 +209,7 @@ impl Hook for RateLimiterHook {
 
 /// Cost guard hook — blocks execution when budget is nearly exhausted.
 pub struct CostGuardHook {
+    #[allow(dead_code)]
     warning_threshold_pct: f64,
     block_threshold_pct: f64,
 }
@@ -213,7 +236,12 @@ impl Hook for CostGuardHook {
             ..
         } = event
         {
-            let pct = *tokens_used as f64 / *budget_limit as f64;
+            // [C9 FIX] Guard against zero budget_limit to avoid division by zero
+            let pct = if *budget_limit == 0 {
+                1.0 // Treat zero budget as fully exhausted
+            } else {
+                *tokens_used as f64 / *budget_limit as f64
+            };
             if pct >= self.block_threshold_pct {
                 return Ok(HookResult::Block(format!(
                     "Budget exhausted: {:.0}% of limit used ({}/{})",

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -9,6 +8,7 @@ pub struct MemoryEntry {
     pub embedding: Option<Vec<f32>>, // Vector representation for semantic search
 }
 
+#[derive(Default)]
 pub struct MemoryManager {
     pub history: VecDeque<MemoryEntry>,
     pub max_tokens: usize,

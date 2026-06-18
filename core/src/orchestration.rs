@@ -8,9 +8,7 @@
 use crate::llm::ModelRegistry;
 use crate::strategy::WeightedScorer;
 use crate::types::{Latency, Price};
-use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrchestrationStrategy {
@@ -176,7 +174,7 @@ impl Orchestrator {
         let mut scored: Vec<(String, f32)> = providers
             .iter()
             .map(|name| {
-                let latency = registry.get_latency(name);
+                let _latency = registry.get_latency(name);
                 let score = if let Some(provider) = registry.get(name) {
                     scorer
                         .calculate_score(&*provider, best_price, best_latency)

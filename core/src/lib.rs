@@ -72,6 +72,7 @@ impl PyAgent {
         }
     }
 
+    #[allow(clippy::useless_conversion)]
     fn run(&mut self, input: String) -> PyResult<String> {
         let result = RUNTIME
             .block_on(async { self.inner.run(&input).await })
@@ -116,7 +117,7 @@ impl TsAgent {
     #[napi]
     pub async fn get_state(&self) -> napi::Result<String> {
         let agent = self.inner.lock().await;
-        let state = format!("{:?}", agent.state);
+        let state = format!("{:?}", agent.state());
         Ok(state)
     }
 
@@ -124,7 +125,7 @@ impl TsAgent {
     #[napi]
     pub async fn get_stats(&self) -> napi::Result<String> {
         let agent = self.inner.lock().await;
-        let stats = &agent.stats;
+        let stats = agent.stats();
         Ok(format!(
             r#"{{"total_input_tokens": {}, "total_output_tokens": {}, "total_cost_usd": {:.6}, "request_count": {}}}"#,
             stats.total_input_tokens,
@@ -134,10 +135,30 @@ impl TsAgent {
         ))
     }
 
-    /// Set budget limits.
+    /// Set budget limits. Validates inputs to reject NaN/negative values.
     #[napi]
     pub async fn set_budget(&self, max_tokens: f64, budget_usd: f64) -> napi::Result<()> {
+        // [C6 FIX] Validate inputs — reject NaN, negative, and non-finite values
+        if max_tokens.is_nan() || max_tokens < 0.0 || !max_tokens.is_finite() {
+            return Err(napi::Error::new(
+                Status::InvalidArg,
+                "max_tokens must be a non-negative finite number",
+            ));
+        }
+        if budget_usd.is_nan() || budget_usd < 0.0 || !budget_usd.is_finite() {
+            return Err(napi::Error::new(
+                Status::InvalidArg,
+                "budget_usd must be a non-negative finite number",
+            ));
+        }
         let mut agent = self.inner.lock().await;
+        // [A3 FIX] Use saturating cast — reject values that don't fit in u64
+        if max_tokens > u64::MAX as f64 {
+            return Err(napi::Error::new(
+                Status::InvalidArg,
+                "max_tokens exceeds u64 range",
+            ));
+        }
         agent.set_budget(max_tokens as u64, budget_usd);
         Ok(())
     }
@@ -154,6 +175,7 @@ impl TsAgent {
 /// Subagent orchestrator exposed to TypeScript.
 #[napi]
 pub struct TsSubagentOrchestrator {
+    #[allow(dead_code)]
     inner: SubagentOrchestrator,
 }
 

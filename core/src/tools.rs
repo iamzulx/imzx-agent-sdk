@@ -46,10 +46,18 @@ impl ToolCall {
         for line in response.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("Action:") {
-                tool_name = trimmed["Action:".len()..].trim().to_string();
+                tool_name = trimmed
+                    .strip_prefix("Action:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 found = true;
             } else if trimmed.starts_with("Action Input:") {
-                tool_args = trimmed["Action Input:".len()..].trim().to_string();
+                tool_args = trimmed
+                    .strip_prefix("Action Input:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             }
         }
 
@@ -139,6 +147,7 @@ pub trait Tool: Send + Sync {
 
 // --- FileSystemTool --- [H4 FIX] TOCTOU mitigation via O_NOFOLLOW
 
+#[derive(Default)]
 pub struct FileSystemTool {
     root_dir: PathBuf,
 }
@@ -166,7 +175,18 @@ impl FileSystemTool {
             match component {
                 Component::Normal(part) => {
                     let value = part.to_string_lossy();
-                    if value.starts_with('.') || matches!(value.as_ref(), "passwd" | "shadow") {
+                    // [S5 FIX] Relaxed from blocking ALL dotfiles to only sensitive ones.
+                    // Allows harmless dotfiles like .gitignore, .editorconfig.
+                    const SENSITIVE_PATHS: &[&str] = &[
+                        ".env", ".git", ".ssh", ".gnupg", ".aws", ".npmrc", ".netrc", ".docker",
+                        ".kube",
+                    ];
+                    if SENSITIVE_PATHS.iter().any(|&s| {
+                        value == s
+                            || value.starts_with(&format!("{}/", s))
+                            || value.starts_with(".env.")
+                    }) || matches!(value.as_ref(), "passwd" | "shadow")
+                    {
                         return Err(anyhow!(
                             "Security violation: Access to protected path component '{}' is forbidden.",
                             value
@@ -238,6 +258,29 @@ impl FileSystemTool {
         // Fallback: standard read (TOCTOU risk accepted on non-Unix)
         fs::read_to_string(path)
     }
+
+    /// [S6 FIX] Write file with O_NOFOLLOW to prevent symlink-based TOCTOU.
+    #[cfg(unix)]
+    fn write_secure(&self, path: &Path, content: &str) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        const O_NOFOLLOW: i32 = 0x20000;
+        const O_CLOEXEC: i32 = 0x80000;
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .custom_flags(O_NOFOLLOW | O_CLOEXEC)
+            .open(path)?;
+        use std::io::Write;
+        file.write_all(content.as_bytes())?;
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    fn write_secure(&self, path: &Path, content: &str) -> Result<()> {
+        fs::write(path, content)
+    }
 }
 
 #[async_trait]
@@ -273,7 +316,8 @@ impl Tool for FileSystemTool {
                 }
                 let safe_path = self.sanitize_path(path_str, false)?;
                 let content = parts[2];
-                fs::write(&safe_path, content)?;
+                // [S6 FIX] Use secure write with O_NOFOLLOW
+                self.write_secure(&safe_path, content)?;
                 Ok(ToolResult {
                     content: "File written successfully".to_string(),
                 })
@@ -413,6 +457,9 @@ impl Tool for ShellTool {
         let output = Command::new(tokens[0])
             .args(&tokens[1..])
             .current_dir(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+            // [S7 FIX] env_clear() removes all inherited environment variables to prevent
+            // LD_PRELOAD injection, PATH manipulation from parent, and other env-based attacks.
+            // Only PATH is explicitly set below (validated by ShellPolicy::get_path).
             .env_clear()
             .env("PATH", ShellPolicy::get_path())
             .output()?;
@@ -427,6 +474,7 @@ impl Tool for ShellTool {
 }
 
 // --- CalculatorTool --- real math evaluation
+// [S1/C4 FIX] Word-boundary constant replacement, full function support.
 
 pub struct CalculatorTool;
 
@@ -445,24 +493,9 @@ impl Tool for CalculatorTool {
             return Err(anyhow!("Calculator error: empty expression"));
         }
 
-        // Replace named constants
-        let mut sanitized = expr
-            .replace("PI", &format!("{}", std::f64::consts::PI))
-            .replace("E", &format!("{}", std::f64::consts::E));
-
-        // Validate: only allow numbers, operators, parentheses, dots, spaces
-        let valid_chars: Vec<char> = sanitized.chars().filter(|c| !c.is_whitespace()).collect();
-        for c in &valid_chars {
-            if !c.is_ascii_digit() && !"+-*/%().".contains(*c) {
-                return Err(anyhow!(
-                    "Calculator error: invalid character '{}'. Only numbers and operators (+, -, *, /, %, parentheses) are allowed.",
-                    c
-                ));
-            }
-        }
-
-        // Simple expression evaluator using recursive descent
-        let result = eval_expression(&sanitized).map_err(|e| anyhow!("Calculator error: {}", e))?;
+        // [S1/C4 FIX] Tokenize directly — constants and functions are handled in the tokenizer
+        // No separate text preprocessing step needed (avoids broken PI/E replacement).
+        let result = eval_expression(expr).map_err(|e| anyhow!("Calculator error: {}", e))?;
 
         Ok(ToolResult {
             content: format!("{} = {}", expr, result),
@@ -473,10 +506,16 @@ impl Tool for CalculatorTool {
 /// Simple recursive descent expression parser for math.
 fn eval_expression(input: &str) -> std::result::Result<f64, String> {
     let tokens = tokenize(input)?;
+    if tokens.is_empty() {
+        return Err("Empty expression".into());
+    }
     let mut pos = 0;
     let result = parse_additive(&tokens, &mut pos)?;
     if pos < tokens.len() {
-        return Err(format!("Unexpected token at position {}", pos));
+        return Err(format!(
+            "Unexpected token at position {}: {:?}",
+            pos, tokens[pos]
+        ));
     }
     Ok(result)
 }
@@ -487,7 +526,9 @@ enum Token {
     Op(char),
     LParen,
     RParen,
-    Pow, // **
+    Pow,          // **
+    Func(String), // sqrt, sin, cos, tan, log, abs, round, floor, ceil
+    Const(f64),   // PI, E
 }
 
 fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
@@ -531,6 +572,22 @@ fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
                     .parse::<f64>()
                     .map_err(|_| format!("Invalid number: {}", num_str))?;
                 tokens.push(Token::Num(num));
+            }
+            // [S1/C4 FIX] Handle alphabetic identifiers (constants and functions)
+            c if c.is_ascii_alphabetic() => {
+                let start = i;
+                while i < chars.len() && chars[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                let ident: String = chars[start..i].iter().collect();
+                match ident.as_str() {
+                    "PI" => tokens.push(Token::Const(std::f64::consts::PI)),
+                    "E" => tokens.push(Token::Const(std::f64::consts::E)),
+                    "sqrt" | "sin" | "cos" | "tan" | "log" | "abs" | "round" | "floor" | "ceil" => {
+                        tokens.push(Token::Func(ident));
+                    }
+                    other => return Err(format!("Unknown identifier: '{}'", other)),
+                }
             }
             c => return Err(format!("Unexpected character: '{}'", c)),
         }
@@ -616,6 +673,48 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, 
             *pos += 1;
             Ok(*n)
         }
+        Token::Const(val) => {
+            *pos += 1;
+            Ok(*val)
+        }
+        Token::Func(name) => {
+            let fname = name.clone();
+            *pos += 1;
+            // Expect LParen
+            if *pos >= tokens.len() || !matches!(&tokens[*pos], Token::LParen) {
+                return Err(format!("Expected '(' after function '{}'", fname));
+            }
+            *pos += 1;
+            let arg = parse_additive(tokens, pos)?;
+            if *pos >= tokens.len() || !matches!(&tokens[*pos], Token::RParen) {
+                return Err(format!("Expected ')' after function '{}' argument", fname));
+            }
+            *pos += 1;
+            match fname.as_str() {
+                "sqrt" => {
+                    if arg < 0.0 {
+                        Err("sqrt argument must be non-negative".into())
+                    } else {
+                        Ok(arg.sqrt())
+                    }
+                }
+                "sin" => Ok(arg.sin()),
+                "cos" => Ok(arg.cos()),
+                "tan" => Ok(arg.tan()),
+                "log" => {
+                    if arg <= 0.0 {
+                        Err("log argument must be positive".into())
+                    } else {
+                        Ok(arg.ln())
+                    }
+                }
+                "abs" => Ok(arg.abs()),
+                "round" => Ok(arg.round()),
+                "floor" => Ok(arg.floor()),
+                "ceil" => Ok(arg.ceil()),
+                _ => Err(format!("Unknown function: '{}'", fname)),
+            }
+        }
         Token::LParen => {
             *pos += 1;
             let result = parse_additive(tokens, pos)?;
@@ -658,6 +757,10 @@ impl Tool for WebSearchTool {
 // --- WebScraperTool --- [H3 FIX] DNS rebinding + [M2 FIX] HTTPS only
 
 pub struct WebScraperTool;
+// NOTE [S10]: DNS resolution uses tokio::net::lookup_host which does not support
+// DNS-over-HTTPS. Resolution is only as secure as the system resolver.
+// NOTE [S11]: CDN-fronted domains may bypass IP pinning if redirects were allowed.
+// Redirects are explicitly blocked (Policy::none()) to mitigate this.
 
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
@@ -753,7 +856,7 @@ impl Tool for WebScraperTool {
 
         let body = response.text().await?;
         let document = Html::parse_document(&body);
-        let selector = Selector::parse("p, h1, h2, h3").unwrap();
+        let selector = Selector::parse("p, h1, h2, h3").expect("valid static CSS selector");
 
         let mut extracted_text = String::new();
         for element in document.select(&selector) {
@@ -781,6 +884,9 @@ impl Tool for DatabaseTool {
     }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
+        // WARNING [S3]: This is a stub implementation. In production, use parameterized
+        // queries (e.g., sqlx::query!) to prevent SQL injection. The current SELECT
+        // check is a minimal guard only — never pass raw user input to a real DB driver.
         let query = args.trim();
 
         let upper_query = query.to_uppercase();
@@ -798,6 +904,7 @@ impl Tool for DatabaseTool {
 
 // --- ToolRegistry --- [C1 FIX] Validator support
 
+#[allow(dead_code)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
     validator: Option<Arc<dyn ToolCallValidator>>,
