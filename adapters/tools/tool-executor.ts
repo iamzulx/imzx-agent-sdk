@@ -200,6 +200,18 @@ function isCommandAllowed(command: string): boolean {
   return ALLOWED_COMMANDS.includes(firstWord);
 }
 
+/** Smart truncation: preserve start + end, summarize middle. */
+function smartTruncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const headLen = Math.floor(maxLen * 0.7);
+  const tailLen = Math.floor(maxLen * 0.2);
+  const head = text.substring(0, headLen);
+  const tail = text.substring(text.length - tailLen);
+  const omitted = text.length - headLen - tailLen;
+  const lineCount = text.split('\n').length;
+  return `${head}\n\n... (${omitted} chars, ~${lineCount} lines omitted) ...\n\n${tail}`;
+}
+
 function sanitizePath(p: string): string {
   const resolved = path.resolve(p);
   const blocked = ['/etc/shadow', '/etc/passwd', '/proc/self', '/dev'];
@@ -333,7 +345,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       const filePath = sanitizePath(args.path as string);
       try {
         const content = await fs.readFile(filePath, 'utf-8');
-        return content;
+        return smartTruncate(content, 50000);
       } catch (err: any) {
         return `Error reading file: ${err.message}`;
       }
@@ -398,7 +410,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
           encoding: 'utf-8',
           env: { ...process.env, TERM: 'dumb' },
         });
-        return output.substring(0, 50000);
+        return smartTruncate(output, 50000);
       } catch (err: any) {
         return `Command error: ${err.stderr || err.message}`.substring(0, 5000);
       }
@@ -453,7 +465,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         });
         if (!response.ok) return `HTTP ${response.status}: ${response.statusText}`;
         const text = await response.text();
-        return text.substring(0, 50000);
+        return smartTruncate(text, 50000);
       } catch (err: any) {
         return `Fetch error: ${err.message}`;
       }

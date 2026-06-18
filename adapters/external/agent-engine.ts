@@ -14,6 +14,7 @@
 import { LlmProvider, type LlmMessage, type LlmTool, type LlmProviderConfig } from './llm-provider.js';
 import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../../domain/ports/agent-engine.js';
 import { executeTool, getToolDefinitions } from '../tools/tool-executor.js';
+import { buildSystemPrompt } from '../tools/prompts.js';
 
 export interface AgentEngineConfig extends LlmProviderConfig {
   maxIterations?: number;
@@ -65,9 +66,9 @@ export class AgentEngine implements AgentEnginePort {
     this.personaPrompt = prompt || this.config.systemPrompt;
 
     // [1.4] DON'T clear messages — keep conversation history
-    // Only clear if this is a fresh start (no existing messages)
     if (this.messages.length === 0) {
-      this.messages = [{ role: 'system', content: this.personaPrompt }];
+      // [S1] Use engineered system prompt with tool guidance
+      this.messages = [{ role: 'system', content: buildSystemPrompt(this.personaPrompt) }];
     }
 
     this.state = 'idle';
@@ -83,7 +84,7 @@ export class AgentEngine implements AgentEnginePort {
 
   /** Clear conversation history and start fresh. */
   clearHistory(): void {
-    this.messages = [{ role: 'system', content: this.personaPrompt }];
+    this.messages = [{ role: 'system', content: buildSystemPrompt(this.personaPrompt) }];
     this.stats = { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
   }
 
@@ -170,8 +171,11 @@ export class AgentEngine implements AgentEnginePort {
         process.stderr.write(`\n[Iteration ${iteration + 1}] Thinking...\n`);
       }
 
-      // [1.2] Check budget before each iteration
+      // [S2] Check budget before each iteration
       this.checkBudget();
+
+      // [S3] Compact context if needed
+      this.compactIfNeeded();
 
       // Call LLM with retry
       this.state = 'thinking';
@@ -342,6 +346,29 @@ export class AgentEngine implements AgentEnginePort {
 
     yield { type: 'error', content: 'Maximum iterations reached' };
     this.state = 'idle';
+  }
+
+  // --- [S3] Context window management ---
+
+  /** Check if context is getting too large and compact if needed. */
+  private compactIfNeeded(): void {
+    const totalChars = this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+    const estimatedTokens = Math.floor(totalChars / 4);
+    const maxContextTokens = 100_000; // Conservative limit for most models
+
+    if (estimatedTokens > maxContextTokens * 0.8) {
+      // Keep: system prompt (first), last 6 messages (recent context)
+      // Remove: middle messages (old context)
+      const system = this.messages[0];
+      const recent = this.messages.slice(-6);
+      const removed = this.messages.length - 1 - recent.length;
+
+      if (removed > 0) {
+        const removedChars = this.messages.slice(1, -6).reduce((sum, m) => sum + (m.content?.length || 0), 0);
+        const summary = `[Context compacted: ${removed} messages (~${Math.floor(removedChars / 4)} tokens) removed to stay within context window]`;
+        this.messages = [system, { role: 'system', content: summary }, ...recent];
+      }
+    }
   }
 
   // --- Port interface ---

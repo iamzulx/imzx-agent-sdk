@@ -5,7 +5,7 @@
   "type": "module",
   "main": "interfaces/sdk/index.ts",
   "bin": {
-    "imzx": "interfaces/cli/cli-handler.ts"
+    "imzx": "./bin/imzx.mjs"
   },
   "exports": {
     ".": "./interfaces/sdk/index.ts",

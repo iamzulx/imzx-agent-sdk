@@ -265,6 +265,19 @@ export class CliHandler {
       rl.prompt();
     });
 
+    // [S9] Graceful shutdown — first Ctrl+C cancels current, second exits
+    let shuttingDown = false;
+    process.on('SIGINT', () => {
+      if (shuttingDown) {
+        console.log(`\n${c.dim}Force exit.${c.reset}`);
+        process.exit(0);
+      }
+      shuttingDown = true;
+      console.log(`\n${c.yellow}Press Ctrl+C again to exit, or type 'exit'${c.reset}`);
+      rl.prompt();
+      setTimeout(() => { shuttingDown = false; }, 3000);
+    });
+
     rl.on('close', () => {
       console.log(`\n${c.dim}Session ended.${c.reset}`);
       process.exit(0);

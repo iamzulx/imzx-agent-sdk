@@ -99,7 +99,14 @@ export class LlmProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`LLM API error ${response.status}: ${errorText.substring(0, 200)}`);
+      const hint = response.status === 401
+        ? ' — Check your API key in .env (OPENROUTER_API_KEY or ANTHROPIC_API_KEY)'
+        : response.status === 429
+        ? ' — Rate limited. Wait a moment and try again.'
+        : response.status === 500
+        ? ' — Server error. The API provider may be experiencing issues.'
+        : '';
+      throw new Error(`LLM API error ${response.status}${hint}: ${errorText.substring(0, 200)}`);
     }
 
     const data = await response.json() as any;
@@ -156,7 +163,7 @@ export class LlmProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`LLM API error ${response.status}: ${errorText.substring(0, 200)}`);
+      throw new Error(`LLM API error ${response.status}${response.status === 401 ? " — Check API key in .env" : ""}: ${errorText.substring(0, 200)}`);
     }
 
     const reader = response.body?.getReader();

@@ -14,9 +14,34 @@
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AgentService, RunOptions } from '../../application/agent-service.js';
 
+// --- [S7] Rate Limiter (in-memory, per IP) ---
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= maxRequests;
+}
+
+// --- [S8] API Authentication ---
+function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
+  if (!apiKey) return true; // No key configured = open access
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) return false;
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  return token === apiKey;
+}
+
 export interface ServerOptions {
   port: number;
   host: string;
+  /** Optional API key for authentication (IMZX_API_KEY env var) */
+  apiKey?: string;
 }
 
 /**
@@ -29,6 +54,21 @@ export async function createServer(agentService: AgentService, options: ServerOp
   const sseClients = new Map<string, ServerResponse>();
 
   const server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
+    // Parse URL early for auth/rate checks
+    const url = new URL(req.url || '/', `http://${host}:${port}`);
+    const method = req.method || 'GET';
+
+    // [S7] Rate limiting
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return jsonResponse(res, 429, { error: 'Rate limit exceeded. Max 60 requests per minute.' });
+    }
+
+    // [S8] API authentication (skip for health check)
+    if (url.pathname !== '/api/health' && !checkAuth(req, options.apiKey)) {
+      return jsonResponse(res, 401, { error: 'Unauthorized. Set Authorization: Bearer <key> header.' });
+    }
+
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -39,9 +79,6 @@ export async function createServer(agentService: AgentService, options: ServerOp
       res.end();
       return;
     }
-
-    const url = new URL(req.url || '/', `http://${host}:${port}`);
-    const method = req.method || 'GET';
 
     try {
       // --- Route matching ---
