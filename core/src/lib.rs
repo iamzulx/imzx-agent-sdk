@@ -20,7 +20,6 @@ pub mod hooks;
 pub mod llm;
 pub mod memory;
 pub mod orchestration;
-pub mod provider;
 pub mod strategy;
 pub mod streaming;
 pub mod subagent;
@@ -38,7 +37,6 @@ pub use hooks::{
 };
 pub use llm::ModelRegistry;
 pub use memory::MemoryManager;
-pub use provider::*;
 pub use strategy::*;
 pub use streaming::{StreamChunk, StreamCollector, StreamConfig, TokenStream};
 pub use subagent::{Subagent, SubagentOrchestrator, SubagentResult, SubagentTask};

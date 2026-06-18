@@ -1,18 +1,20 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "noEmit": true
-  },
-  "include": [
-    "adapters/**/*.ts",
-    "application/**/*.ts",
-    "domain/**/*.ts",
-    "interfaces/**/*.ts"
-  ]
-}
+2|  "compilerOptions": {
+3|    "target": "ES2022",
+4|    "module": "NodeNext",
+5|    "moduleResolution": "NodeNext",
+6|    "strict": true,
+7|    "esModuleInterop": true,
+8|    "forceConsistentCasingInFileNames": true,
+9|    "skipLibCheck": true,
+10|    "noEmit": true
+1  },
+12|  "include": [
+13|    "adapters/**/*.ts",
+14|    "application/**/*.ts",
+15|    "domain/**/*.ts",
+16|    "interfaces/**/*.ts",
+    "adapters/tools/**/*.ts"
+17|  ]
+18|}
+19|

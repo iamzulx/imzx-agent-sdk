@@ -55,11 +55,11 @@ if [ -f .env ]; then
 fi
 
 if [ "$should_write_env" = true ]; then
-    ask_input "Enter your ANTHROPIC_API_KEY" API_KEY
+    ask_input "Enter your API Key (OPENROUTER_API_KEY or ANTHROPIC_API_KEY)" API_KEY
     if [ -n "$API_KEY" ]; then
         # [H5 FIX] Set umask in subshell before file creation — eliminates race window
         # File is created with mode 0600 from the start, not chmod'd after
-        ( umask 077; printf 'ANTHROPIC_API_KEY=%s\n' "$API_KEY" > .env )
+        ( umask 077; printf 'OPENROUTER_API_KEY=%s\n' "$API_KEY" > .env )
         echo -e "${GREEN}✅ .env file created successfully (mode 0600).${NC}"
     else
         echo -e "${YELLOW}⚠️  No API Key provided. You will need to create a .env file manually later.${NC}"

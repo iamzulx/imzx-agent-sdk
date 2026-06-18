@@ -21,7 +21,7 @@ yarn-error.log*
 # Rust
 /target/
 **/target/
-Cargo.lock # Optional: remove if you want to track exact dependency versions
+# Cargo.lock is committed for reproducible builds
 *.rs.bk
 
 # Environment & Secrets
@@ -36,3 +36,4 @@ Thumbs.db
 # Project specific junk
 test.txt
 
+core/target/
