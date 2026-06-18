@@ -38,7 +38,7 @@ npm install --ignore-scripts
 
 # 2. Configure API key
 cp .env.example .env
-# Edit .env → set OPENROUTER_API_KEY or ANTHROPIC_API_KEY
+# Edit .env → set any API key (auto-detects provider)
 
 # 3. Run
 npx tsx interfaces/cli/cli-handler.ts run "What files are in this directory?"
@@ -192,6 +192,13 @@ Next task → agent is smarter (has memory + lessons + skills)
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENROUTER_API_KEY` | OpenRouter API key | — |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `ANTHROPIC_API_KEY` | Anthropic API key | — |
+| `TOGETHER_API_KEY` | Together AI API key | — |
+| `GROQ_API_KEY` | Groq API key | — |
+| `IMZX_API_KEY` | Generic API key (any provider) | — |
+| `IMZX_LLM_BASE_URL` | Custom endpoint URL | auto-detect |
+| `IMZX_MODEL` | Model name | auto-detect |
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
 | `IMZX_API_KEY` | Custom API key | — |
 | `IMZX_LLM_BASE_URL` | Custom LLM endpoint | `https://openrouter.ai/api/v1/chat/completions` |

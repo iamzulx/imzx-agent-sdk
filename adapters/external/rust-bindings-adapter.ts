@@ -8,6 +8,7 @@
  */
 
 import module from 'node:module';
+import { LlmProvider } from './llm-provider.js';
 import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../../domain/ports/agent-engine.js';
 import { AgentEngine, type AgentEngineConfig } from './agent-engine.js';
 
@@ -121,21 +122,10 @@ export class RustBindingsAdapter implements AgentEnginePort {
 
   /** Resolve LLM config from adapter config, env vars, or defaults. */
   private resolveConfig(): AgentEngineConfig {
-    const baseUrl = this.adapterConfig.baseUrl
-      || process.env.IMZX_LLM_BASE_URL
-      || process.env.OPENROUTER_API_URL
-      || 'https://openrouter.ai/api/v1/chat/completions';
-
-    const apiKey = this.adapterConfig.apiKey
-      || process.env.IMZX_API_KEY
-      || process.env.OPENROUTER_API_KEY
-      || process.env.ANTHROPIC_API_KEY
-      || process.env.OPENAI_API_KEY
-      || '';
-
-    const model = this.adapterConfig.model
-      || process.env.IMZX_MODEL
-      || 'anthropic/claude-sonnet-4';
+    const env = LlmProvider.fromEnv();
+    const baseUrl = this.adapterConfig.baseUrl || env.baseUrl;
+    const apiKey = this.adapterConfig.apiKey || env.apiKey;
+    const model = this.adapterConfig.model || env.model;
 
     return {
       baseUrl,

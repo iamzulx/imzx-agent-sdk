@@ -62,6 +62,31 @@ export interface LlmProviderConfig {
 export class LlmProvider {
   private config: LlmProviderConfig;
 
+  /** Auto-detect provider from environment variables. */
+  static fromEnv(): LlmProviderConfig {
+    const baseUrl = process.env.IMZX_LLM_BASE_URL
+      || (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1/chat/completions' : null)
+      || (process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : null)
+      || (process.env.TOGETHER_API_KEY ? 'https://api.together.xyz/v1/chat/completions' : null)
+      || 'https://openrouter.ai/api/v1/chat/completions';
+
+    const apiKey = process.env.IMZX_API_KEY
+      || process.env.OPENAI_API_KEY
+      || process.env.OPENROUTER_API_KEY
+      || process.env.ANTHROPIC_API_KEY
+      || process.env.GROQ_API_KEY
+      || process.env.TOGETHER_API_KEY
+      || '';
+
+    const model = process.env.IMZX_MODEL
+      || (process.env.GROQ_API_KEY ? 'llama-3.3-70b-versatile' : null)
+      || (process.env.TOGETHER_API_KEY ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo' : null)
+      || (process.env.OPENAI_API_KEY ? 'gpt-4o' : null)
+      || 'anthropic/claude-sonnet-4';
+
+    return { baseUrl, apiKey, model };
+  }
+
   constructor(config: LlmProviderConfig) {
     this.config = {
       maxTokens: 4096,
