@@ -2,6 +2,7 @@
 
 **Current Version**: v0.3.0
 **Architecture**: Rust core (NAPI-RS) + TypeScript orchestration + Clean Architecture
+**Last Updated**: 2026-06-18
 
 ---
 
@@ -13,105 +14,103 @@ All 15 security audit findings resolved (1 CRITICAL, 5 HIGH, 5 MEDIUM, 4 LOW).
 
 ## v0.3.0 — Agent Intelligence (Completed 2026-06-18)
 
-Based on Anthropic's "Building Effective Agents" and "Effective Context Engineering" research.
-
-### New Modules
-
-| Module | File | Description | Source |
-|--------|------|-------------|--------|
-| Hooks | core/src/hooks.rs | Middleware lifecycle (PreToolUse, PostToolUse, AgentStart/End, OnIteration, OnError, OnBudgetWarning) | Claude Agent SDK hooks |
-| Subagents | core/src/subagent.rs | Child agent spawning, parallel/sequential/map-reduce | Claude Agent SDK subagents |
-| Streaming | core/src/streaming.rs | SSE chunks, StreamCollector, TokenStream | Vercel AI SDK |
-| Context Manager | core/src/context_manager.rs | Token budgeting, priority compaction, progressive disclosure | Anthropic Context Engineering |
-| MCP Client | adapters/external/mcp-adapter.ts | stdio + HTTP transport, tool discovery | MCP specification |
-
-### Built-in Hooks
-
-| Hook | Purpose |
-|------|---------|
-| AuditHook | Logs all tool calls for security auditing |
-| RateLimiterHook | Limits tool calls per minute |
-| CostGuardHook | Blocks execution when budget threshold reached |
-
-### Orchestration Patterns
-
-| Pattern | Strategy | Description |
-|---------|----------|-------------|
-| Router | Router | Heuristic model selection (default) |
-| Hierarchical | Hierarchical | Head plans, Workers execute |
-| Consensus | Consensus | Parallel workers, Judge synthesis |
-| Prompt Chaining | Chaining | Sequential steps with validation gates |
-| Evaluator-Optimizer | EvaluatorOptimizer | Generate-Evaluate-Refine loop |
-| Parallelization | Parallelization | Multiple models simultaneously |
-
-### NAPI Enhancements
-
-- TsAgent.get_state() — current agent state
-- TsAgent.get_stats() — session statistics
-- TsAgent.set_budget() — configure limits
-- TsSubagentOrchestrator — exposed to TypeScript
+5 new modules (hooks, subagent, streaming, context_manager, mcp_client).
+6 orchestration strategies. Real agent engine (TypeScript ReAct loop).
+CLI (7 subcommands), REST API (OpenAI-compatible), SDK (programmatic).
+CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ---
 
-## v0.4.0 — Production Readiness (Planned)
+## v0.4.0 — Real Agent (In Progress)
 
-### P1 — Critical
+**Goal**: Agent benar-benar fungsional — bukan stub/mock.
 
-- Real embedding model (replace hash-based LocalEmbedder)
-- Anthropic direct provider
-- NAPI bridge: expose tool registration from TypeScript
-- RustBindingsAdapter: connect to actual NAPI module
-- Remove dead Neon bindings
+### Phase 1 — Bikin Agent Jalan (Core Functionality)
 
-### P2 — Important
+- **1.1 Fix function calling format** [TODO]
+  AgentEngine masih pakai text parsing `Action:/Action Input:` — fragile.
+  Pindah ke OpenAI native function calling format (tool_calls array dari response).
+  LlmProvider.stream() sudah parse tool_calls, tapi AgentEngine.run() belum.
 
-- MCP server mode (expose imzx as MCP server)
-- Persistent memory (SQLite-backed)
-- Streaming LLM support in provider trait
-- OpenTelemetry observability
-- File checkpointing
+- **1.2 Budget enforcement** [TODO]
+  `setBudget()` kosong. Tambah `checkBudget()` di setiap iterasi ReAct loop.
+  Hitung dari `response.usage.inputTokens + outputTokens`, block kalau exceed.
 
-### P3 — Nice to Have
+- **1.3 Real cost tracking** [TODO]
+  Token count masih heuristic (`content.length / 4`). Pakai `usage` dari LLM API response.
+  Hitung cost dari harga model (per 1M tokens).
 
-- Web UI dashboard
-- Plugin system (external .so/.dylib)
-- Multi-tenant isolation
-- Cost analytics
+- **1.4 Conversation memory** [TODO]
+  Setiap `run()` mulai dari 0 — tidak ada history. Tambah `conversationHistory`
+  di AgentEngine yang persist antar panggilan. Tambah `clearHistory()` method.
+
+- **1.5 Error recovery** [TODO]
+  Kalau LLM API gagal (timeout, 429, 500), langsung error. Tambah retry logic
+  (3x exponential backoff: 1s, 2s, 4s) + fallback ke model lain kalau ada.
+
+- **1.6 Persona loading** [TODO]
+  CLI load persona dari JSON tapi prompt tidak di-inject sebagai system message
+  dengan benar. Fix flow: persona.prompt -> messages[0] system message.
+
+### Phase 2 — Tools Real
+
+- **2.1 Calculator (real)** [TODO]
+  Implementasi: `new Function('return ' + expr)` dengan sandboxing, atau mathjs.
+
+- **2.2 Web search (real)** [TODO]
+  Integrasi: Tavily API / DuckDuckGo Lite scrape / Searxng.
+
+- **2.3 File edit tool** [TODO]
+  Tambah tool `edit_file(path, old_text, new_text)` — partial file edit.
+
+- **2.4 Tool approval** [TODO]
+  Sebelum execute tool berbahaya (write_file, run_command), minta user konfirmasi.
+
+- **2.5 Rust CalculatorTool** [TODO]
+  Implementasi actual math eval di Rust core.
+
+- **2.6 Rust WebSearchTool** [TODO]
+  Integrasi real web search (reqwest + search API).
+
+- **2.7 Database tool cleanup** [TODO]
+  Hapus atau implementasi SQLite.
+
+### Phase 3 — Advanced Features
+
+- **3.1 Multi-turn conversation** [TODO]
+  Chat mode persist context antar user messages.
+
+- **3.2 Code execution tool** [TODO]
+  Tool `run_code(language, code)` — execute JS/Python snippet.
+
+- **3.3 Agent state save/restore** [TODO]
+  Serialize state ke JSON file, bisa resume setelah restart.
+
+- **3.4 Multiple personas mid-chat** [TODO]
+  `/persona <name>` switch tanpa restart.
+
+- **3.5 Observability** [TODO]
+  Log setiap step ke JSONL file.
+
+- **3.6 Streaming polish** [TODO]
+  Terminal spinner, progress bar, proper color coding.
 
 ---
 
-## Architecture
+## v0.5.0 — Production Readiness (Future)
 
-```
-+-----------------------------------------------+
-|                  TypeScript                     |
-|  CLI -> AgentService -> PersonaRepo            |
-|  MCP Client -> RustBindingsAdapter             |
-+-----------------------------------------------+
-|               NAPI-RS Bridge                   |
-|  TsAgent (run, get_state, get_stats)           |
-|  TsSubagentOrchestrator                        |
-+-----------------------------------------------+
-|                   Rust Core                    |
-|  Agent (ReAct + hooks + context)               |
-|  ToolRegistry (6 tools)                        |
-|  ModelRegistry (OpenRouter)                    |
-|  HookRegistry (audit, rate, cost)              |
-|  ContextManager (budgeting, compaction)        |
-|  SubagentOrchestrator (parallel/seq)           |
-|  StreamCollector (SSE)                         |
-|  Orchestrator (6 strategies)                   |
-+-----------------------------------------------+
-```
+- **5.1** Real embeddings (fastembed-rs atau remote API)
+- **5.2** NAPI binary build (cross-platform .node files)
+- **5.3** npm publish
+- **5.4** Python SDK
+- **5.5** Web UI dashboard
+- **5.6** Plugin system (load tools dari external file)
 
 ---
 
 ## References
 
-| Topic | Source | Date |
-|-------|--------|------|
-| Building Effective Agents | Anthropic Engineering | Dec 2024 |
-| Effective Context Engineering | Anthropic Engineering | Sep 2025 |
-| Claude Agent SDK | code.claude.com/docs | Jun 2026 |
-| MCP Specification | modelcontextprotocol.io | 2024 |
-| AI Agent Frameworks 2026 | morphllm.com | Jun 2026 |
+- Building Effective Agents — Anthropic Engineering (Dec 2024)
+- Effective Context Engineering — Anthropic Engineering (Sep 2025)
+- Claude Agent SDK — code.claude.com/docs (Jun 2026)
+- OpenAI Function Calling — platform.openai.com/docs (2024)
