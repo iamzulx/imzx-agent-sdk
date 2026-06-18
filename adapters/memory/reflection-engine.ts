@@ -184,11 +184,11 @@ export class ReflectionEngine {
 
   /** Get recent reflections for prompt injection. */
   getRecentReflections(limit: number = 3): string[] {
-    const reflections = this.memory.recall('reflection', {
-      category: 'session',
-      limit,
-    });
-    return reflections.map(r => r.content);
+    return this.memory.getByCategory('session')
+      .filter(e => e.key.startsWith('reflection_'))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit)
+      .map(r => r.content);
   }
 
   /** Get lessons learned. */

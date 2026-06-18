@@ -142,6 +142,7 @@ export class PersistentMemory {
       .slice(0, limit)
       .map(s => {
         s.entry.access_count++;
+        this.dirty = true;
         return s.entry;
       });
   }
@@ -208,11 +209,11 @@ export class PersistentMemory {
   /** Detect corrections (user says agent was wrong). */
   detectCorrection(userMessage: string): boolean {
     const correctionPatterns = [
-      /salah|wrong|incorrect|bukan itu/,
-      /jangan\s+.*lagi|don't\s+.*again/,
-      /seharusnya|should be|it should/,
-      /yang benar|the correct/,
-      /koreksi|correction|fix this/,
+      /salah|wrong|incorrect|bukan itu/i,
+      /jangan\s+.*lagi|don't\s+.*again/i,
+      /seharusnya|should be|it should/i,
+      /yang benar|the correct/i,
+      /koreksi|correction|fix this/i,
     ];
 
     for (const pattern of correctionPatterns) {

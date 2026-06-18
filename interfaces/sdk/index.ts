@@ -80,6 +80,7 @@ export async function createAgent(config: AgentConfig = {}): Promise<AgentInstan
       const chunks: StreamChunk[] = [];
       let resolve: (() => void) | null = null;
       let done = false;
+      let error: Error | null = null;
 
       // Start streaming in background
       const runPromise = agentService.execute(defaultPersona, prompt, {
@@ -90,6 +91,9 @@ export async function createAgent(config: AgentConfig = {}): Promise<AgentInstan
           chunks.push(chunk);
           resolve?.();
         },
+      }).catch((err) => {
+        error = err;
+        resolve?.(); // Wake up the waiting loop
       });
 
       // Yield chunks as they arrive
@@ -102,7 +106,10 @@ export async function createAgent(config: AgentConfig = {}): Promise<AgentInstan
           }
           yield chunk;
         }
-        if (!done) {
+        if (error) {
+          yield { type: 'error', content: (error as Error).message };
+          done = true;
+        } else if (!done) {
           await new Promise<void>(r => { resolve = r; });
         }
       }
