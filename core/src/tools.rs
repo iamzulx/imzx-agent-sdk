@@ -462,8 +462,7 @@ impl Tool for CalculatorTool {
         }
 
         // Simple expression evaluator using recursive descent
-        let result = eval_expression(&sanitized)
-            .map_err(|e| anyhow!("Calculator error: {}", e))?;
+        let result = eval_expression(&sanitized).map_err(|e| anyhow!("Calculator error: {}", e))?;
 
         Ok(ToolResult {
             content: format!("{} = {}", expr, result),
@@ -498,10 +497,21 @@ fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
 
     while i < chars.len() {
         match chars[i] {
-            ' ' | '\t' => { i += 1; }
-            '(' => { tokens.push(Token::LParen); i += 1; }
-            ')' => { tokens.push(Token::RParen); i += 1; }
-            '+' | '-' | '/' | '%' => { tokens.push(Token::Op(chars[i])); i += 1; }
+            ' ' | '\t' => {
+                i += 1;
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                i += 1;
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                i += 1;
+            }
+            '+' | '-' | '/' | '%' => {
+                tokens.push(Token::Op(chars[i]));
+                i += 1;
+            }
             '*' => {
                 if i + 1 < chars.len() && chars[i + 1] == '*' {
                     tokens.push(Token::Pow);
@@ -517,7 +527,9 @@ fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
                     i += 1;
                 }
                 let num_str: String = chars[start..i].iter().collect();
-                let num = num_str.parse::<f64>().map_err(|_| format!("Invalid number: {}", num_str))?;
+                let num = num_str
+                    .parse::<f64>()
+                    .map_err(|_| format!("Invalid number: {}", num_str))?;
                 tokens.push(Token::Num(num));
             }
             c => return Err(format!("Unexpected character: '{}'", c)),
@@ -530,8 +542,14 @@ fn parse_additive(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64,
     let mut left = parse_multiplicative(tokens, pos)?;
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::Op('+') => { *pos += 1; left += parse_multiplicative(tokens, pos)?; }
-            Token::Op('-') => { *pos += 1; left -= parse_multiplicative(tokens, pos)?; }
+            Token::Op('+') => {
+                *pos += 1;
+                left += parse_multiplicative(tokens, pos)?;
+            }
+            Token::Op('-') => {
+                *pos += 1;
+                left -= parse_multiplicative(tokens, pos)?;
+            }
             _ => break,
         }
     }
@@ -542,17 +560,24 @@ fn parse_multiplicative(tokens: &[Token], pos: &mut usize) -> std::result::Resul
     let mut left = parse_power(tokens, pos)?;
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::Op('*') => { *pos += 1; left *= parse_power(tokens, pos)?; }
+            Token::Op('*') => {
+                *pos += 1;
+                left *= parse_power(tokens, pos)?;
+            }
             Token::Op('/') => {
                 *pos += 1;
                 let right = parse_power(tokens, pos)?;
-                if right == 0.0 { return Err("Division by zero".into()); }
+                if right == 0.0 {
+                    return Err("Division by zero".into());
+                }
                 left /= right;
             }
             Token::Op('%') => {
                 *pos += 1;
                 let right = parse_power(tokens, pos)?;
-                if right == 0.0 { return Err("Modulo by zero".into()); }
+                if right == 0.0 {
+                    return Err("Modulo by zero".into());
+                }
                 left %= right;
             }
             _ => break,
@@ -587,7 +612,10 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, 
         return Err("Unexpected end of expression".into());
     }
     match &tokens[*pos] {
-        Token::Num(n) => { *pos += 1; Ok(*n) }
+        Token::Num(n) => {
+            *pos += 1;
+            Ok(*n)
+        }
         Token::LParen => {
             *pos += 1;
             let result = parse_additive(tokens, pos)?;
