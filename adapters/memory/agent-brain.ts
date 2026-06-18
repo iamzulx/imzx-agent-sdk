@@ -1,25 +1,26 @@
 /**
  * AgentBrain — central coordinator for self-improving agent intelligence.
- * 
+ *
  * Integrates:
  * - PersistentMemory (v0.5.0) — cross-session memory
  * - ReflectionEngine (v0.6.0) — self-reflection after tasks
  * - SkillManager (v0.7.0) — save/load/search skills
  * - SelfModifier (v0.8.0) — performance tracking, prompt evolution
- * 
- * This is the "brain" that makes the agent smarter over time.
+ * - KnowledgeGraph (v0.5.0) — entity-relationship memory
  */
 
 import { PersistentMemory } from './persistent-memory.js';
 import { ReflectionEngine } from './reflection-engine.js';
 import { SkillManager } from './skill-manager.js';
 import { SelfModifier, type PerformanceMetric } from './self-modifier.js';
+import { KnowledgeGraph } from './knowledge-graph.js';
 
 export class AgentBrain {
   public memory: PersistentMemory;
   public reflection: ReflectionEngine;
   public skills: SkillManager;
   public modifier: SelfModifier;
+  public graph: KnowledgeGraph;
 
   private taskStartTime: number = 0;
   private taskToolsUsed: string[] = [];
@@ -29,34 +30,31 @@ export class AgentBrain {
     this.reflection = new ReflectionEngine(this.memory);
     this.skills = new SkillManager(baseDir);
     this.modifier = new SelfModifier(this.memory, this.skills, baseDir);
+    this.graph = new KnowledgeGraph();
   }
 
   // --- Task Lifecycle ---
 
-  /** Called when a new task starts. */
   onTaskStart(): void {
     this.taskStartTime = Date.now();
     this.taskToolsUsed = [];
     this.reflection.startTask();
   }
 
-  /** Called when a tool is used. */
   onToolUse(toolName: string): void {
     this.taskToolsUsed.push(toolName);
     this.reflection.recordToolUse(toolName);
   }
 
-  /** Called when tokens are consumed. */
   onTokensUsed(count: number): void {
     this.reflection.recordTokens(count);
   }
 
-  /** Called when the task ends. */
   onTaskEnd(userPrompt: string, agentResponse: string, outcome: 'success' | 'partial' | 'failure'): void {
     const duration = Date.now() - this.taskStartTime;
 
     // 1. Generate reflection
-    const reflection = this.reflection.endTask(userPrompt, agentResponse, outcome);
+    this.reflection.endTask(userPrompt, agentResponse, outcome);
 
     // 2. Record performance metric
     this.modifier.recordMetric({
@@ -64,12 +62,12 @@ export class AgentBrain {
       task_type: this.classifyTask(userPrompt),
       outcome,
       duration_ms: duration,
-      tokens_used: this.taskToolsUsed.length * 1000, // Estimate
+      tokens_used: this.taskToolsUsed.length * 1000,
       tools_used: [...new Set(this.taskToolsUsed)],
       iterations: this.taskToolsUsed.length,
     });
 
-    // 3. Auto-detect user preferences from the prompt
+    // 3. Auto-detect user preferences
     this.memory.detectPreferences(userPrompt);
 
     // 4. Record workflow for optimization
@@ -81,22 +79,21 @@ export class AgentBrain {
       this.skills.extractFromTask(
         userPrompt.substring(0, 200),
         [...new Set(this.taskToolsUsed)],
-        [`Used tools: ${[...new Set(this.taskToolsUsed)].join(' → ')}`],
+        [`Used tools: ${[...new Set(this.taskToolsUsed)].join(' -> ')}`],
       );
     }
   }
 
   // --- Context Building ---
 
-  /** Build the enhanced system prompt with all intelligence layers. */
   buildEnhancedPrompt(basePrompt: string, userQuery?: string): string {
     let prompt = basePrompt;
 
-    // Layer 1: Persistent memory (user prefs, corrections, knowledge)
+    // Layer 1: Persistent memory
     const memoryContext = this.memory.formatForPrompt(userQuery);
     if (memoryContext) prompt += memoryContext;
 
-    // Layer 2: Self-reflection (lessons from past tasks)
+    // Layer 2: Self-reflection
     const reflectionContext = this.reflection.formatForPrompt();
     if (reflectionContext) prompt += reflectionContext;
 
@@ -106,11 +103,15 @@ export class AgentBrain {
       if (skillContext) prompt += skillContext;
     }
 
-    // Layer 4: Performance insights
+    // Layer 4: Knowledge graph
+    const graphContext = this.graph.formatForPrompt(userQuery);
+    if (graphContext) prompt += graphContext;
+
+    // Layer 5: Performance insights
     const summary = this.modifier.getPerformanceSummary();
     if (summary.totalTasks > 0) {
-      const trend = summary.trend === 'improving' ? '📈 improving' :
-                    summary.trend === 'declining' ? '📉 declining' : '➡️ stable';
+      const trend = summary.trend === 'improving' ? 'improving' :
+                    summary.trend === 'declining' ? 'declining' : 'stable';
       prompt += `\n\n## Performance Context:\n- Success rate: ${Math.round(summary.successRate * 100)}% (${summary.totalTasks} tasks)\n- Trend: ${trend}\n- Top tools: ${summary.topTools.map(t => t.tool).join(', ')}`;
     }
 
@@ -119,7 +120,6 @@ export class AgentBrain {
 
   // --- User Interaction ---
 
-  /** Process a user message for learning signals. */
   processUserMessage(message: string): {
     isCorrection: boolean;
     preferencesDetected: boolean;
@@ -129,6 +129,9 @@ export class AgentBrain {
     this.memory.detectPreferences(message);
     const after = this.memory.stats().total;
 
+    // Process message for knowledge graph
+    this.graph.processMessage(message);
+
     return {
       isCorrection,
       preferencesDetected: after > before,
@@ -137,18 +140,19 @@ export class AgentBrain {
 
   // --- Stats ---
 
-  /** Get comprehensive brain stats. */
   getStats(): {
     memory: ReturnType<PersistentMemory['stats']>;
     skills: number;
     performance: ReturnType<SelfModifier['getPerformanceSummary']>;
     reflections: number;
+    graph: ReturnType<KnowledgeGraph['stats']>;
   } {
     return {
       memory: this.memory.stats(),
       skills: this.skills.list().length,
       performance: this.modifier.getPerformanceSummary(),
       reflections: this.memory.getByCategory('session').filter(e => e.key.startsWith('reflection_')).length,
+      graph: this.graph.stats(),
     };
   }
 
