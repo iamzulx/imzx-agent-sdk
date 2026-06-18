@@ -263,8 +263,21 @@ export class AgentEngine implements AgentEnginePort {
   // --- Streaming ---
 
   async *runStreaming(prompt: string): AsyncGenerator<StreamChunk> {
+    // [Brain] Process user message for learning signals (mirrors run())
+    this.brain.processUserMessage(prompt);
+    this.brain.onTaskStart();
+
     this.messages.push({ role: 'user', content: prompt });
     this.state = 'thinking';
+
+    // [Brain] Enhance system prompt with memory, reflections, skills
+    const enhancedSystem = this.brain.buildEnhancedPrompt(
+      this.messages[0]?.content || '',
+      prompt
+    );
+    if (this.messages[0]?.role === 'system') {
+      this.messages[0].content = enhancedSystem;
+    }
 
     for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       yield { type: 'thinking', content: `Iteration ${iteration + 1}` };
@@ -321,8 +334,9 @@ export class AgentEngine implements AgentEnginePort {
       // If no tool calls — final answer
       if (toolCallsAccumulated.length === 0) {
         this.messages.push({ role: 'assistant', content: fullContent });
-        yield { type: 'done', content: fullContent };
         this.state = 'idle';
+        this.brain.onTaskEnd(prompt, fullContent, 'success'); // [Brain] task done
+        yield { type: 'done', content: fullContent };
         return;
       }
 
@@ -340,6 +354,7 @@ export class AgentEngine implements AgentEnginePort {
       // Execute tools
       for (const toolCall of toolCallsAccumulated) {
         this.state = 'calling_tool';
+        this.brain.onToolUse(toolCall.name); // [Brain] track tool use
         yield { type: 'tool_call', content: `${toolCall.name}(...)` };
 
         let toolResult: string;
@@ -364,6 +379,7 @@ export class AgentEngine implements AgentEnginePort {
       }
     }
 
+    this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
     yield { type: 'error', content: 'Maximum iterations reached' };
     this.state = 'idle';
   }

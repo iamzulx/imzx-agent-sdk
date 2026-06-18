@@ -87,7 +87,7 @@ export class RustBindingsAdapter implements AgentEnginePort {
     return this.engine.run(prompt);
   }
 
-  async *runStreaming?(prompt: string): AsyncGenerator<StreamChunk> {
+  async *runStreaming(prompt: string): AsyncGenerator<StreamChunk> {
     if (!this.engine) throw new Error('Agent not initialized');
     yield* this.engine.runStreaming(prompt);
   }
