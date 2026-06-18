@@ -41,6 +41,7 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
+#[derive(Default)]
 pub struct ModelRegistry {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
     pub metrics: Arc<RwLock<HashMap<String, f32>>>,

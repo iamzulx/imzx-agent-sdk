@@ -39,6 +39,7 @@ pub enum StreamChunk {
 }
 
 /// Streaming response collector — accumulates chunks into a complete response.
+#[derive(Default)]
 pub struct StreamCollector {
     pub chunks: Vec<StreamChunk>,
     pub full_text: String,

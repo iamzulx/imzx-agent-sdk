@@ -62,6 +62,7 @@ pub trait Hook: Send + Sync {
 }
 
 /// Hook registry — manages and executes hooks in order.
+#[derive(Default)]
 pub struct HookRegistry {
     hooks: Vec<Arc<dyn Hook>>,
 }

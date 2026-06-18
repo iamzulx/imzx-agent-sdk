@@ -68,7 +68,6 @@ impl Subagent {
 
     /// Execute the subagent task and return the result.
     pub async fn execute(&mut self) -> SubagentResult {
-        let max_iter = self.task.max_iterations.unwrap_or(5);
         // Note: Agent.run() already enforces max 10 iterations internally
         // Subagents use a shorter default
 

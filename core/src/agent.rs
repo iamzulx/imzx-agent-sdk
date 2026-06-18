@@ -12,7 +12,7 @@ use crate::embedding::LocalEmbedder;
 use crate::hooks::{HookEvent, HookRegistry, HookResult};
 use crate::llm::{LlmProvider, ModelRegistry};
 use crate::memory::MemoryManager;
-use crate::orchestration::{AgentRole, OrchestrationStrategy, Orchestrator};
+use crate::orchestration::{OrchestrationStrategy, Orchestrator};
 use crate::tools::{ToolCall, ToolRegistry, UntrustedObservation};
 use anyhow::{anyhow, Result};
 use std::fmt;

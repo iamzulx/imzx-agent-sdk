@@ -37,6 +37,7 @@ pub enum AgentRole {
     Optimizer,
 }
 
+#[derive(Default)]
 pub struct RoleMap {
     pub assignments: HashMap<AgentRole, String>,
 }
