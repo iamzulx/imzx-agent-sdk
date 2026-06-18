@@ -14,6 +14,9 @@ import { ReflectionEngine } from './reflection-engine.js';
 import { SkillManager } from './skill-manager.js';
 import { SelfModifier, type PerformanceMetric } from './self-modifier.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
+import { SecurityGuardrails } from '../tools/security-guardrails.js';
+import { ContextSummarizer } from './context-summarizer.js';
+import { OutputGuard } from '../tools/output-guard.js';
 import { AgentEvaluator } from './agent-evaluator.js';
 
 export class AgentBrain {
@@ -22,6 +25,9 @@ export class AgentBrain {
   public skills: SkillManager;
   public modifier: SelfModifier;
   public graph: KnowledgeGraph;
+  public guardrails: SecurityGuardrails;
+  public summarizer: ContextSummarizer;
+  public outputGuard: OutputGuard;
   public evaluator: AgentEvaluator;
 
   private taskStartTime: number = 0;
@@ -33,6 +39,9 @@ export class AgentBrain {
     this.skills = new SkillManager(baseDir);
     this.modifier = new SelfModifier(this.memory, this.skills, baseDir);
     this.graph = new KnowledgeGraph();
+    this.guardrails = new SecurityGuardrails();
+    this.summarizer = new ContextSummarizer();
+    this.outputGuard = new OutputGuard();
     this.evaluator = new AgentEvaluator(this.memory, this.graph);
   }
 
@@ -134,6 +143,12 @@ export class AgentBrain {
 
     // Process message for knowledge graph
     this.graph.processMessage(message);
+
+    // Security guardrails — check for injection attempts
+    const inputCheck = this.guardrails.checkInput(message);
+    if (!inputCheck.safe) {
+      this.memory.save('correction', `security_${Date.now()}`, `Blocked: ${inputCheck.reason}`, { tags: ['security', inputCheck.category || 'unknown'], importance: 10 });
+    }
 
     return {
       isCorrection,
