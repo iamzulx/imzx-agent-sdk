@@ -1,11 +1,9 @@
 // Author: Iamzulx
 // SPDX-License-Identifier: MIT
 //
-// Agent module — ReAct loop with security hardening.
-// Security fixes applied:
-//   [C1]  Typed ToolCall parsing + pre-execution validation
-//   [M3]  Tool observations sanitized via UntrustedObservation
-//   [M4]  Budget cap (max_tokens + budget_usd) enforced
+// Agent module — ReAct loop with security hardening + context engineering.
+// Security fixes: C1 (typed ToolCall), M3 (UntrustedObservation), M4 (budget cap)
+// v2.0 additions: hooks integration, context management, streaming support.
 
 use std::fmt;
 use crate::tools::{ToolRegistry, ToolCall, UntrustedObservation};
@@ -13,6 +11,8 @@ use crate::memory::MemoryManager;
 use crate::embedding::LocalEmbedder;
 use crate::llm::{LlmProvider, ModelRegistry};
 use crate::orchestration::{Orchestrator, OrchestrationStrategy, AgentRole};
+use crate::hooks::{HookRegistry, HookEvent, HookResult};
+use crate::context_manager::{ContextManager, ContextConfig, ContextEntry, ContextRole, Priority, estimate_tokens};
 use anyhow::{Result, anyhow};
 
 #[derive(Debug, Clone, Default)]
@@ -35,7 +35,22 @@ pub enum AgentState {
     Error(String),
 }
 
-/// [M4 FIX] Budget configuration to prevent runaway costs.
+impl fmt::Display for AgentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AgentState::Idle => write!(f, "idle"),
+            AgentState::Planning => write!(f, "planning"),
+            AgentState::Thinking => write!(f, "thinking"),
+            AgentState::CallingTool { tool_name, .. } => write!(f, "calling_tool:{}", tool_name),
+            AgentState::Observing => write!(f, "observing"),
+            AgentState::Reviewing => write!(f, "reviewing"),
+            AgentState::Responding => write!(f, "responding"),
+            AgentState::Error(e) => write!(f, "error:{}", e),
+        }
+    }
+}
+
+/// Budget configuration to prevent runaway costs.
 #[derive(Debug, Clone)]
 pub struct BudgetConfig {
     pub max_tokens: u64,
@@ -45,12 +60,13 @@ pub struct BudgetConfig {
 impl Default for BudgetConfig {
     fn default() -> Self {
         Self {
-            max_tokens: 500_000,     // 500K tokens per session
-            budget_usd: 5.0,         // $5 USD per session
+            max_tokens: 500_000,
+            budget_usd: 5.0,
         }
     }
 }
 
+/// Main agent struct — ReAct loop with hooks, context management, and streaming.
 pub struct Agent {
     pub name: String,
     pub description: String,
@@ -63,8 +79,13 @@ pub struct Agent {
     pub orchestrator: Orchestrator,
     pub default_model: String,
     pub stats: SessionStats,
-    /// [M4 FIX] Budget cap — agent halts when exceeded.
     pub budget: BudgetConfig,
+    /// Hook registry for middleware lifecycle events.
+    pub hooks: HookRegistry,
+    /// Context manager for token budgeting and compaction.
+    pub context: ContextManager,
+    /// Maximum iterations before forced stop.
+    pub max_iterations: u32,
 }
 
 impl Agent {
@@ -82,6 +103,9 @@ impl Agent {
             default_model: "claude-3-5-sonnet".to_string(),
             stats: SessionStats::default(),
             budget: BudgetConfig::default(),
+            hooks: HookRegistry::new(),
+            context: ContextManager::new(ContextConfig::default()),
+            max_iterations: 10,
         }
     }
 
@@ -96,24 +120,10 @@ impl Agent {
         )
     }
 
-    pub fn set_model(&mut self, model_name: &str) {
-        self.default_model = model_name.to_string();
-    }
-
-    pub fn set_orchestrator(&mut self, orchestrator: Orchestrator) {
-        self.orchestrator = orchestrator;
-    }
-
-    pub fn set_embedder(&mut self, embedder: LocalEmbedder) {
-        self.embedder = Some(embedder);
-    }
-
-    /// [M4 FIX] Set custom budget limits.
     pub fn set_budget(&mut self, max_tokens: u64, budget_usd: f64) {
         self.budget = BudgetConfig { max_tokens, budget_usd };
     }
 
-    /// [M4 FIX] Check if budget has been exceeded.
     fn check_budget(&self) -> Result<()> {
         let total_tokens = self.stats.total_input_tokens + self.stats.total_output_tokens;
         if total_tokens >= self.budget.max_tokens {
@@ -131,154 +141,236 @@ impl Agent {
         Ok(())
     }
 
+    /// Register a hook for lifecycle events.
+    pub fn add_hook(&mut self, hook: std::sync::Arc<dyn crate::hooks::Hook>) {
+        self.hooks.register(hook);
+    }
+
+    /// Get context window disclosure summary.
+    pub fn context_summary(&self) -> crate::context_manager::ContextDisclosure {
+        self.context.disclosure_summary()
+    }
+
+    /// Main execution loop — ReAct pattern with hooks and context engineering.
     pub async fn run(&mut self, input: &str) -> Result<String> {
-        // 1. Process Input & Update Memory
-        let mut input_embedding = None;
-        if let Some(ref embedder) = self.embedder {
-            match embedder.embed(input) {
-                Ok(emb) => input_embedding = Some(emb),
-                Err(e) => {
-                    self.state = AgentState::Error(e.to_string());
-                    return Err(e);
-                }
-            }
+        // Fire AgentStart hook
+        self.state = AgentState::Planning;
+        let start_event = HookEvent::AgentStart { input: input.to_string() };
+        if let HookResult::Block(reason) = self.hooks.execute(&start_event).await? {
+            return Err(anyhow!("Agent blocked by hook: {}", reason));
         }
 
-        // Retrieve augmented context (History + Semantic Memories)
-        let context = if let Some(ref emb) = input_embedding {
-             self.memory.get_augmented_context(emb, 3)
+        // Add system prompt to context
+        self.context.push(ContextEntry {
+            content: self.prompt.clone(),
+            role: ContextRole::System,
+            token_estimate: estimate_tokens(&self.prompt),
+            priority: Priority::Critical,
+            source: "system".to_string(),
+            timestamp: 0,
+        });
+
+        // Add user input to context
+        self.context.push(ContextEntry {
+            content: input.to_string(),
+            role: ContextRole::UserMessage,
+            token_estimate: estimate_tokens(input),
+            priority: Priority::Critical,
+            source: "user".to_string(),
+            timestamp: self.stats.request_count,
+        });
+
+        // Get augmented context from memory (embeddings if available)
+        let augmented = if let Some(embedder) = &self.embedder {
+            let embedding = embedder.embed(input);
+            self.memory.add("user", input, Some(embedding.clone()));
+            self.memory.get_augmented_context(&embedding, 3)
         } else {
-             self.memory.get_context()
+            self.memory.add("user", input, None);
+            String::new()
         };
 
-        self.memory.add_message("user", input, input_embedding);
+        let mut final_response = String::new();
 
-        // 2. ReAct/Planning Loop
-        let mut current_input = input.to_string();
-        let mut iteration_count = 0;
-        let max_iterations = 10;
-
-        loop {
-            if iteration_count >= max_iterations {
-                self.state = AgentState::Error("Max iterations reached".to_string());
-                return Err(anyhow!("Max iterations reached"));
-            }
-
-            // [M4 FIX] Check budget before each iteration
+        for iteration in 0..self.max_iterations {
+            // Budget check before each iteration
             if let Err(e) = self.check_budget() {
-                self.state = AgentState::Error(e.to_string());
+                let _ = self.hooks.execute(&HookEvent::OnError {
+                    error: e.to_string(),
+                    context: "budget_check".to_string(),
+                }).await;
                 return Err(e);
             }
 
-            // --- PHASE 1: PLANNING (If not already planned) ---
-            if iteration_count == 0 {
-                self.state = AgentState::Planning;
-
-                let planner = self.orchestrator.select_model(&self.llm_registry, AgentRole::Head, Some(&context))
-                    .unwrap_or_else(|_| {
-                        let model_name = self.default_model.clone();
-                        self.llm_registry.get(&model_name)
-                            .expect("Default model must exist in registry")
-                    });
-
-                let plan_prompt = format!(
-                    "Create a step-by-step execution plan for the following task. \
-                    Return ONLY a JSON list of strings representing the steps. \
-                    Example: [\"step 1\", \"step 2\"] \n\nTask: {}",
-                    current_input
-                );
-
-                let plan_res = planner.generate(&self.prompt, &plan_prompt, &context).await?;
-
-                if let Some(start_idx) = plan_res.find('[') {
-                    if let Some(end_idx) = plan_res.find(']') {
-                        let json_str = &plan_res[start_idx..=end_idx];
-                        let steps: Vec<String> = serde_json::from_str(json_str)
-                            .map_err(|e| anyhow!("Failed to parse plan JSON: {}", e))?;
-
-                        if !steps.is_empty() {
-                            current_input = format!("Plan: {:?}", steps);
-                            self.memory.add_message("system", &format!("Plan created: {:?}", steps), None);
-                        }
-                    }
-                }
-            }
-
-            self.state = AgentState::Thinking;
-
-            let provider = self.orchestrator.select_model(&self.llm_registry, AgentRole::Worker, Some(&context))
-                .unwrap_or_else(|_| {
-                    let model_name = self.default_model.clone();
-                    self.llm_registry.get(&model_name)
-                        .expect("Default model must exist in registry")
-                });
-
-            let start_time = std::time::Instant::now();
-            let response = match provider.generate(&self.prompt, &current_input, &context).await {
-                Ok(res) => {
-                    let elapsed = start_time.elapsed().as_millis() as f32;
-                    self.llm_registry.update_latency(provider.name(), elapsed);
-
-                    self.stats.request_count += 1;
-                    let input_tokens = current_input.len() as u64;
-                    let output_tokens = res.len() as u64;
-                    self.stats.total_input_tokens += input_tokens;
-                    self.stats.total_output_tokens += output_tokens;
-                    self.stats.total_cost_usd += (input_tokens as f64 * 0.000001) + (output_tokens as f64 * 0.000002);
-
-                    res
-                },
-                Err(e) => {
-                    self.state = AgentState::Error(e.to_string());
-                    return Err(e);
-                }
+            // Build the full context for this iteration
+            let context_str = self.context.render();
+            let full_context = if augmented.is_empty() {
+                context_str
+            } else {
+                format!("{}\n\n## Augmented Memory:\n{}", context_str, augmented)
             };
 
-            // [C1 FIX] Use typed ToolCall parser instead of raw string matching
+            // Select model via orchestrator
+            let model_name = match self.orchestrator.get_execution_plan() {
+                crate::orchestration::ExecutionPlan::Single => {
+                    self.orchestrator.route_selection(&self.llm_registry)
+                        .unwrap_or_else(|| self.default_model.clone())
+                }
+                _ => self.default_model.clone(),
+            };
+
+            // Get LLM provider
+            let provider = self.llm_registry.get(&model_name)
+                .or_else(|| self.llm_registry.get(&self.default_model))
+                .ok_or_else(|| anyhow!("No LLM provider available. Registered: {:?}", self.llm_registry.list()))?;
+
+            // Generate response
+            self.state = AgentState::Thinking;
+            let response = provider.generate(&self.prompt, input, &full_context).await?;
+
+            // Track token usage (heuristic estimation)
+            let input_tokens = (full_context.len() / 4) as u64;
+            let output_tokens = (response.len() / 4) as u64;
+            self.stats.total_input_tokens += input_tokens;
+            self.stats.total_output_tokens += output_tokens;
+            self.stats.request_count += 1;
+            let price = provider.current_price().0 as f64;
+            self.stats.total_cost_usd += (input_tokens as f64 * price / 1_000_000.0)
+                + (output_tokens as f64 * price * 2.0 / 1_000_000.0);
+
+            // Fire OnIteration hook
+            if let HookResult::Block(reason) = self.hooks.execute(&HookEvent::OnIteration {
+                iteration,
+                thinking: response.clone(),
+            }).await? {
+                return Err(anyhow!("Iteration blocked by hook: {}", reason));
+            }
+
+            // Add assistant response to context
+            self.context.push(ContextEntry {
+                content: response.clone(),
+                role: ContextRole::AssistantResponse,
+                token_estimate: estimate_tokens(&response),
+                priority: Priority::Normal,
+                source: format!("model:{}", model_name),
+                timestamp: self.stats.request_count,
+            });
+
+            // Try to parse a tool call from the response
             if let Some(tool_call) = ToolCall::parse_from_response(&response) {
                 self.state = AgentState::CallingTool {
                     tool_name: tool_call.tool_name.clone(),
                     args: tool_call.args.clone(),
                 };
 
-                // Execute Tool — validator runs inside execute_tool (C1)
-                let tool_result = match self.tool_registry.execute_tool(&tool_call.tool_name, &tool_call.args).await {
-                    Ok(res) => res.content,
-                    Err(e) => format!("Error executing tool '{}': {}", tool_call.tool_name, e),
+                // Fire PreToolUse hook
+                let pre_event = HookEvent::PreToolUse {
+                    tool_name: tool_call.tool_name.clone(),
+                    args: tool_call.args.clone(),
                 };
+                match self.hooks.execute(&pre_event).await? {
+                    HookResult::Block(reason) => {
+                        self.context.push(ContextEntry {
+                            content: format!("[Tool call blocked: {}]", reason),
+                            role: ContextRole::Observation,
+                            token_estimate: estimate_tokens(&reason),
+                            priority: Priority::Normal,
+                            source: "hook".to_string(),
+                            timestamp: self.stats.request_count,
+                        });
+                        continue;
+                    }
+                    HookResult::Transform(new_args) => {
+                        // Hook transformed the args — use the new version
+                        let transformed_call = ToolCall {
+                            tool_name: tool_call.tool_name.clone(),
+                            args: new_args,
+                        };
+                        let tool_start = std::time::Instant::now();
+                        let result = self.tool_registry.execute_tool(&transformed_call).await;
+                        let duration_ms = tool_start.elapsed().as_millis() as u64;
 
-                // [M3 FIX] Sanitize tool output before feeding back to LLM
-                let safe_observation = UntrustedObservation::sanitize(&tool_result);
+                        self.process_tool_result(&transformed_call.tool_name, result, duration_ms).await?;
+                    }
+                    HookResult::Continue => {
+                        // Normal execution
+                        let tool_start = std::time::Instant::now();
+                        let result = self.tool_registry.execute_tool(&tool_call).await;
+                        let duration_ms = tool_start.elapsed().as_millis() as u64;
+
+                        self.process_tool_result(&tool_call.tool_name, result, duration_ms).await?;
+                    }
+                }
 
                 self.state = AgentState::Observing;
-                self.memory.add_message("assistant", &response, None);
-                self.memory.add_message("system", &safe_observation, None);
-
-                current_input = safe_observation;
-                iteration_count += 1;
-                continue;
             } else {
-                // Final Response
+                // No tool call — this is the final response
+                final_response = response.clone();
                 self.state = AgentState::Responding;
-                self.memory.add_message("assistant", &response, None);
-                self.state = AgentState::Idle;
-                return Ok(response);
+
+                // Add to memory
+                if let Some(embedder) = &self.embedder {
+                    let embedding = embedder.embed(&response);
+                    self.memory.add("assistant", &response, Some(embedding));
+                } else {
+                    self.memory.add("assistant", &response, None);
+                }
+
+                break;
             }
         }
-    }
-}
 
-impl fmt::Display for AgentState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AgentState::Idle => write!(f, "Idle"),
-            AgentState::Planning => write!(f, "Planning"),
-            AgentState::Thinking => write!(f, "Thinking"),
-            AgentState::CallingTool { tool_name, .. } => write!(f, "Calling Tool: {}", tool_name),
-            AgentState::Observing => write!(f, "Observing"),
-            AgentState::Reviewing => write!(f, "Reviewing"),
-            AgentState::Responding => write!(f, "Responding"),
-            AgentState::Error(err) => write!(f, "Error: {}", err),
+        // Fire AgentEnd hook
+        let _ = self.hooks.execute(&HookEvent::AgentEnd {
+            response: final_response.clone(),
+            total_iterations: self.stats.request_count as u32,
+        }).await;
+
+        self.state = AgentState::Idle;
+        Ok(final_response)
+    }
+
+    /// Process a tool result — sanitize, add to context, fire PostToolUse hook.
+    async fn process_tool_result(
+        &mut self,
+        tool_name: &str,
+        result: Result<crate::tools::ToolResult>,
+        duration_ms: u64,
+    ) -> Result<()> {
+        let sanitized = match result {
+            Ok(tr) => {
+                let obs = UntrustedObservation::new(tr.content);
+                obs.sanitize()
+            }
+            Err(e) => format!("[Tool error: {}]", e),
+        };
+
+        // Fire PostToolUse hook
+        let post_event = HookEvent::PostToolUse {
+            tool_name: tool_name.to_string(),
+            result: sanitized.clone(),
+            duration_ms,
+        };
+        let _ = self.hooks.execute(&post_event).await?;
+
+        // Add tool result to context
+        self.context.push(ContextEntry {
+            content: sanitized.clone(),
+            role: ContextRole::ToolResult,
+            token_estimate: estimate_tokens(&sanitized),
+            priority: Priority::High,
+            source: format!("tool:{}", tool_name),
+            timestamp: self.stats.request_count,
+        });
+
+        // Add to memory
+        if let Some(embedder) = &self.embedder {
+            let embedding = embedder.embed(&sanitized);
+            self.memory.add("tool_result", &sanitized, Some(embedding));
+        } else {
+            self.memory.add("tool_result", &sanitized, None);
         }
+
+        Ok(())
     }
 }

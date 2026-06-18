@@ -1,6 +1,6 @@
 {
   "name": "imzx",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "TypeScript Claude Agent SDK framework",
   "main": "interfaces/cli/cli-handler.ts",
   "type": "module",
