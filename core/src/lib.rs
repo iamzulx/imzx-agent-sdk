@@ -36,6 +36,7 @@ pub use error::*;
 pub use hooks::{
     AuditHook, CostGuardHook, Hook, HookEvent, HookRegistry, HookResult, RateLimiterHook,
 };
+pub use llm::ModelRegistry;
 pub use memory::MemoryManager;
 pub use provider::*;
 pub use strategy::*;
@@ -87,7 +88,7 @@ impl PyAgent {
 /// NAPI-exposed agent for TypeScript.
 #[napi]
 pub struct TsAgent {
-    pub inner: Arc<tokio::sync::Mutex<Agent>>,
+    inner: Arc<tokio::sync::Mutex<Agent>>,
 }
 
 #[napi]
@@ -146,7 +147,7 @@ impl TsAgent {
     /// Get the agent's audit log (if AuditHook is registered).
     #[napi]
     pub async fn get_audit_log(&self) -> napi::Result<String> {
-        let agent = self.inner.lock().await;
+        let _agent = self.inner.lock().await;
         // Return the hook registry's audit entries if available
         Ok(r#"{"message": "Audit log requires AuditHook registration"}"#.to_string())
     }

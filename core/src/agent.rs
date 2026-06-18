@@ -10,7 +10,7 @@ use crate::context_manager::{
 };
 use crate::embedding::LocalEmbedder;
 use crate::hooks::{HookEvent, HookRegistry, HookResult};
-use crate::llm::{LlmProvider, ModelRegistry};
+use crate::llm::ModelRegistry;
 use crate::memory::MemoryManager;
 use crate::orchestration::{OrchestrationStrategy, Orchestrator};
 use crate::tools::{ToolCall, ToolRegistry, UntrustedObservation};
@@ -52,8 +52,7 @@ impl fmt::Display for AgentState {
     }
 }
 
-/// Budget configuration to prevent runaway costs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BudgetConfig {
     pub max_tokens: u64,
     pub budget_usd: f64,
@@ -191,11 +190,12 @@ impl Agent {
 
         // Get augmented context from memory (embeddings if available)
         let augmented = if let Some(embedder) = &self.embedder {
-            let embedding = embedder.embed(input);
-            self.memory.add("user", input, Some(embedding.clone()));
+            let embedding = embedder.embed(input)?;
+            self.memory
+                .add_message("user", input, Some(embedding.clone()));
             self.memory.get_augmented_context(&embedding, 3)
         } else {
-            self.memory.add("user", input, None);
+            self.memory.add_message("user", input, None);
             String::new()
         };
 
@@ -312,7 +312,10 @@ impl Agent {
                             args: new_args,
                         };
                         let tool_start = std::time::Instant::now();
-                        let result = self.tool_registry.execute_tool(&transformed_call).await;
+                        let result = self
+                            .tool_registry
+                            .execute_tool(&transformed_call.tool_name, &transformed_call.args)
+                            .await;
                         let duration_ms = tool_start.elapsed().as_millis() as u64;
 
                         self.process_tool_result(&transformed_call.tool_name, result, duration_ms)
@@ -321,7 +324,10 @@ impl Agent {
                     HookResult::Continue => {
                         // Normal execution
                         let tool_start = std::time::Instant::now();
-                        let result = self.tool_registry.execute_tool(&tool_call).await;
+                        let result = self
+                            .tool_registry
+                            .execute_tool(&tool_call.tool_name, &tool_call.args)
+                            .await;
                         let duration_ms = tool_start.elapsed().as_millis() as u64;
 
                         self.process_tool_result(&tool_call.tool_name, result, duration_ms)
@@ -337,10 +343,11 @@ impl Agent {
 
                 // Add to memory
                 if let Some(embedder) = &self.embedder {
-                    let embedding = embedder.embed(&response);
-                    self.memory.add("assistant", &response, Some(embedding));
+                    let embedding = embedder.embed(&response)?;
+                    self.memory
+                        .add_message("assistant", &response, Some(embedding));
                 } else {
-                    self.memory.add("assistant", &response, None);
+                    self.memory.add_message("assistant", &response, None);
                 }
 
                 break;
@@ -368,10 +375,7 @@ impl Agent {
         duration_ms: u64,
     ) -> Result<()> {
         let sanitized = match result {
-            Ok(tr) => {
-                let obs = UntrustedObservation::new(tr.content);
-                obs.sanitize()
-            }
+            Ok(tr) => UntrustedObservation::sanitize(&tr.content),
             Err(e) => format!("[Tool error: {}]", e),
         };
 
@@ -395,10 +399,11 @@ impl Agent {
 
         // Add to memory
         if let Some(embedder) = &self.embedder {
-            let embedding = embedder.embed(&sanitized);
-            self.memory.add("tool_result", &sanitized, Some(embedding));
+            let embedding = embedder.embed(&sanitized)?;
+            self.memory
+                .add_message("tool_result", &sanitized, Some(embedding));
         } else {
-            self.memory.add("tool_result", &sanitized, None);
+            self.memory.add_message("tool_result", &sanitized, None);
         }
 
         Ok(())

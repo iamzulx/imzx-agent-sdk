@@ -40,8 +40,7 @@ pub trait LlmProvider: Send + Sync {
         Latency(2000.0)
     }
 }
-
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ModelRegistry {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
     pub metrics: Arc<RwLock<HashMap<String, f32>>>,
@@ -82,8 +81,7 @@ impl ModelRegistry {
             .unwrap_or(2000.0)
     }
 }
-
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ChatMessage {
     role: String,
     content: String,

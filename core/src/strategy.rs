@@ -1,4 +1,4 @@
-use crate::provider::LlmProvider;
+use crate::llm::LlmProvider;
 use crate::types::{Latency, Price, Score};
 use std::sync::Arc;
 
@@ -31,7 +31,7 @@ impl WeightedScorer {
 
     /// Calculates a score for a provider based on relative performance vs best knowns.
     /// Score = (weight_p * (current_p / best_p)) + (weight_l * (current_l / best_l))
-    pub fn calculate_score<P: LlmProvider>(
+    pub fn calculate_score<P: LlmProvider + ?Sized>(
         &self,
         provider: &P,
         best_price: Price,

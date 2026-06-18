@@ -5,7 +5,7 @@
 // v2.0 — Added routing, parallelization, evaluator-optimizer, prompt chaining.
 // Based on Anthropic's "Building Effective Agents" patterns.
 
-use crate::llm::{LlmProvider, ModelRegistry};
+use crate::llm::ModelRegistry;
 use crate::strategy::WeightedScorer;
 use crate::types::{Latency, Price};
 use anyhow::{anyhow, Result};

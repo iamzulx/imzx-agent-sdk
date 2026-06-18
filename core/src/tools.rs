@@ -414,7 +414,7 @@ impl Tool for ShellTool {
             .args(&tokens[1..])
             .current_dir(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .env_clear()
-            .env("PATH", ShellTool::get_path())
+            .env("PATH", ShellPolicy::get_path())
             .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -542,7 +542,7 @@ impl Tool for WebScraperTool {
         // 2. Filter out blocked IPs
         // 3. Pin the filtered IPs via reqwest::resolve() so the HTTP client
         //    uses them directly — no second DNS lookup, no rebinding window.
-        let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?;
+        let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?.collect();
 
         let safe_addrs: Vec<SocketAddr> = addrs
             .into_iter()
@@ -557,11 +557,13 @@ impl Tool for WebScraperTool {
         }
 
         // Build client with DNS pinned to the validated IPs
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
-            .redirect(Policy::none())
-            .resolve(host, safe_addrs)
-            .build()?;
+            .redirect(Policy::none());
+        for addr in safe_addrs {
+            builder = builder.resolve(host, addr);
+        }
+        let client = builder.build()?;
 
         let response = client.get(url).send().await?;
         if response.status().is_redirection() {

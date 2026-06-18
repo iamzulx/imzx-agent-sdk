@@ -45,7 +45,7 @@ pub struct Subagent {
 
 impl Subagent {
     /// Create a new subagent from a task, inheriting the parent's LLM registry.
-    pub fn new(task: SubagentTask, llm_registry: ModelRegistry, default_model: String) -> Self {
+    pub fn new(mut task: SubagentTask, llm_registry: ModelRegistry, default_model: String) -> Self {
         let mut agent = Agent::new(
             format!("subagent-{}", task.task_id),
             "Subagent worker".to_string(),
@@ -54,7 +54,7 @@ impl Subagent {
         agent.llm_registry = llm_registry;
         agent.default_model = default_model;
 
-        if let Some(budget) = task.budget_override {
+        if let Some(budget) = task.budget_override.take() {
             agent.budget = budget;
         }
 
