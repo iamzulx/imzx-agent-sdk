@@ -14,6 +14,7 @@
 import * as path from 'node:path';
 import * as readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { config as loadDotenv } from 'dotenv';
 import { AgentService, type RunOptions } from '../../application/agent-service.js';
 import { GetPersonaUseCase } from '../../application/use-cases/get-persona.js';
 import { FilePersonaRepository } from '../../adapters/persistence/file-persona-repository.js';
@@ -40,8 +41,13 @@ export class CliHandler {
   private readonly verbose: boolean;
 
   constructor(personaDir: string, options: { verbose?: boolean } = {}) {
+    // Load .env file
+    loadDotenv({ path: path.resolve(process.cwd(), '.env') });
+
     const personaRepository = new FilePersonaRepository(personaDir);
-    const agentEngine = new RustBindingsAdapter();
+    const agentEngine = new RustBindingsAdapter({
+      verbose: options.verbose,
+    });
     const getPersonaUseCase = new GetPersonaUseCase(personaRepository);
 
     this.agentService = new AgentService(getPersonaUseCase, agentEngine);
