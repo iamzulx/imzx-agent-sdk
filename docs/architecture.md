@@ -1,48 +1,170 @@
-# imzx Agent Framework Architecture
+# imzx-agent-sdk Architecture
 
-The `imzx` framework is a production-ready SDK for building autonomous agents. It utilizes a **Clean Architecture (Hexagonal)** pattern to ensure a strict separation between business rules, application logic, and infrastructure.
+## Overview
 
-## 🏗️ Architectural Overview
+imzx-agent-sdk is a production-ready AI Agent framework built with Clean Architecture (Hexagonal) principles. The system separates business rules from infrastructure through four distinct layers with strict dependency direction.
 
-The project is divided into four distinct layers. Dependencies flow only inward: **Interfaces $\rightarrow$ Application $\rightarrow$ Domain $\leftarrow$ Adapters**.
+## Layer Architecture
 
-### 1. Domain Layer (`/domain`)
-The heart of the system. This layer is completely independent of any external framework or library.
-- **Entities**: Core types like `Persona`.
-- **Ports**: Interface contracts (e.g., `PersonaRepository`, `AgentEnginePort`) that define *what* the system needs without specifying *how* it's done.
-- **Use Cases**: Pure business logic (e.g., `GetPersonaUseCase`) that implements the primary system rules.
+```
+                    ┌─────────────────────────────────┐
+                    │         Interfaces Layer         │
+                    │  CLI · REST API · SDK            │
+                    └──────────────┬──────────────────┘
+                                   │ calls
+                    ┌──────────────▼──────────────────┐
+                    │       Application Layer          │
+                    │  AgentService · UseCases         │
+                    └──────────────┬──────────────────┘
+                                   │ delegates
+                    ┌──────────────▼──────────────────┐
+                    │        Adapters Layer            │
+                    │  AgentEngine · LlmProvider       │
+                    │  ToolExecutor · MCP · RustBridge │
+                    └──────────────┬──────────────────┘
+                                   │ implements
+                    ┌──────────────▼──────────────────┐
+                    │         Domain Layer             │
+                    │  Persona · AgentEnginePort       │
+                    └─────────────────────────────────┘
+```
 
-### 2. Application Layer (`/application`)
-The orchestration layer. It coordinates the flow of data between the domain and the infrastructure.
-- **Services**: `AgentService` manages the lifecycle of an agent request, from persona retrieval to final execution.
-- **DTOs**: Data Transfer Objects for clean communication between layers.
+**Dependency Rule**: Dependencies point inward only. Domain has zero external dependencies.
 
-### 3. Adapter Layer (`/adapters`)
-The infrastructure implementation. This layer handles all "dirty" details.
-- **Persistence**: `FilePersonaRepository` implements the `PersonaRepository` port using the local filesystem.
-- **External**: `RustBindingsAdapter` implements the `AgentEnginePort` by bridging to the high-performance Rust core via FFI.
-- **Logging**: Integration with `pino` for structured observability.
+## Data Flow
 
-### 4. Interface Layer (`/interfaces`)
-The presentation layer. This is the only entry point for the user.
-- **CLI**: `CliHandler` manages command-line arguments and output formatting.
-- **Future**: This layer can be expanded to include REST APIs or GUI interfaces without touching the core logic.
+### Single Prompt Execution
 
----
+```
+User Input
+  → CliHandler.handle()
+    → AgentService.execute(persona, prompt)
+      → GetPersonaUseCase.execute()        [Domain]
+        → FilePersonaRepository.findById()  [Adapter]
+      → RustBindingsAdapter.initialize()    [Adapter]
+        → Try NAPI (Rust core)
+        → Fallback: AgentEngine (TypeScript)
+      → AgentEngine.run(prompt)
+        → LlmProvider.complete(messages, tools)  [LLM API]
+        → Parse tool calls from response
+        → ToolExecutor.execute(name, args)        [Tool]
+        → Loop: feed result back to LLM
+        → Return final answer
+    → Format response
+  → Display to user
+```
 
-## 🔄 Data Execution Flow
+### ReAct Loop (AgentEngine)
 
-1. **User Request**: User invokes the CLI with a prompt and agent name.
-2. **Presentation**: `CliHandler` validates input and calls `AgentService.execute()`.
-3. **Orchestration**: `AgentService` calls `GetPersonaUseCase` to retrieve the agent's identity.
-4. **Persistence**: `FilePersonaRepository` reads the JSON persona from disk.
-5. **Execution**: `AgentService` sends the persona and prompt to `RustBindingsAdapter`.
-6. **Core**: The Rust core processes the request and returns a response.
-7. **Output**: The response flows back through the layers to the CLI for display.
+```
+┌──────────────────────────────────────────────┐
+│                 ReAct Loop                    │
+│                                               │
+│  1. Send prompt + tools to LLM               │
+│  2. LLM responds with text OR tool calls     │
+│  3. If text only → return as final answer    │
+│  4. If tool call → execute tool              │
+│  5. Feed tool result back to LLM             │
+│  6. Go to step 2 (max 10 iterations)         │
+│                                               │
+│  Hooks fire at each step:                     │
+│  - PreToolUse (validate/block/transform)      │
+│  - PostToolUse (log/audit)                    │
+│  - OnIteration (monitor)                      │
+│  - OnBudgetWarning (cost guard)               │
+└──────────────────────────────────────────────┘
+```
 
-## 🛠️ Tech Stack
-- **Language**: TypeScript (Application) & Rust (Core Engine)
-- **Validation**: Zod (Runtime type safety)
-- **Bridge**: Rust FFI / NAPI-RS
-- **Logging**: Pino
-- **Architecture**: Clean Architecture / Hexagonal
+## Rust Core Modules
+
+### Module Dependency Graph
+
+```
+lib.rs (NAPI-RS / PyO3 bindings)
+  └── agent.rs (ReAct loop)
+        ├── tools.rs (ToolCall, ToolRegistry, UntrustedObservation)
+        ├── llm.rs (LlmProvider, ModelRegistry, OpenRouterProvider)
+        ├── hooks.rs (HookRegistry, HookEvent, AuditHook, RateLimiter, CostGuard)
+        ├── context_manager.rs (ContextManager, Priority, CompactionStrategy)
+        ├── memory.rs (MemoryManager)
+        ├── embedding.rs (LocalEmbedder)
+        └── orchestration.rs (Orchestrator, 6 strategies)
+              └── strategy.rs (WeightedScorer)
+
+subagent.rs (SubagentOrchestrator)
+  ├── agent.rs
+  └── llm.rs
+
+streaming.rs (StreamCollector, TokenStream)
+  └── (standalone, used by agent.rs)
+```
+
+### Key Types
+
+| Module | Key Types | Purpose |
+|--------|-----------|---------|
+| agent.rs | `Agent`, `AgentState`, `BudgetConfig`, `SessionStats` | Core agent with state machine |
+| tools.rs | `ToolCall`, `ToolCallValidator`, `UntrustedObservation`, `ToolRegistry` | Secure tool execution |
+| llm.rs | `LlmProvider` (trait), `ModelRegistry`, `OpenRouterProvider` | LLM abstraction |
+| hooks.rs | `Hook` (trait), `HookRegistry`, `HookEvent`, `HookResult` | Middleware system |
+| context_manager.rs | `ContextManager`, `ContextEntry`, `Priority`, `CompactionStrategy` | Token budgeting |
+| subagent.rs | `Subagent`, `SubagentOrchestrator`, `SubagentTask`, `SubagentResult` | Child agents |
+| streaming.rs | `StreamChunk`, `StreamCollector`, `TokenStream` | SSE streaming |
+| orchestration.rs | `Orchestrator`, `OrchestrationStrategy`, `ExecutionPlan`, `ComplexityLevel` | Coordination |
+
+## Security Model
+
+### Defense in Depth
+
+```
+Layer 1: Input Validation
+  - Persona ID regex (^[a-zA-Z0-9_-]+$)
+  - Path sanitization (canonicalize + starts_with)
+  - URL validation (HTTPS-only, private IP block)
+
+Layer 2: Execution Guards
+  - ShellTool command allowlist (exact match)
+  - ToolCallValidator (pre-execution hook)
+  - RateLimiterHook (calls per minute)
+
+Layer 3: Output Sanitization
+  - UntrustedObservation (escape Action: patterns)
+  - [UNTRUSTED OBSERVATION] markers
+  - Tool result truncation (50K chars)
+
+Layer 4: Resource Limits
+  - BudgetConfig (max tokens + max USD)
+  - CostGuardHook (budget threshold blocking)
+  - Max iterations (10)
+  - Command timeout (30s)
+
+Layer 5: Secret Management
+  - SecretBox<String> for API keys
+  - Zeroize on Drop
+  - Error body redaction
+```
+
+## Extension Points
+
+### Adding a New Tool
+
+1. Add tool definition in `adapters/tools/tool-executor.ts` (getToolDefinitions)
+2. Add execution case in `executeTool()` function
+3. For Rust: implement `Tool` trait in `core/src/tools.rs`, register in `ToolRegistry::new()`
+
+### Adding a New LLM Provider
+
+1. Implement `LlmProvider` trait in `core/src/llm.rs`
+2. Register in `ModelRegistry`
+3. For TypeScript: modify `LlmProvider` class in `adapters/external/llm-provider.ts`
+
+### Adding a New Hook
+
+1. Implement `Hook` trait in `core/src/hooks.rs`
+2. Register via `agent.hooks.register(Arc::new(MyHook::new()))`
+
+### Adding a New Orchestration Strategy
+
+1. Add variant to `OrchestrationStrategy` enum in `core/src/orchestration.rs`
+2. Implement logic in `Orchestrator::get_execution_plan()`
+3. Add to `Orchestrator::route_selection()` if model selection needed

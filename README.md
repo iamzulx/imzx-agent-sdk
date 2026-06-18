@@ -1,76 +1,219 @@
-# 🤖 imzx Agent SDK
+# imzx-agent-sdk
 
-**imzx** is a high-performance framework for creating AI Assistants (Agents). It utilizes a **Clean Architecture** pattern to provide a scalable, testable, and production-ready environment.
+A high-performance AI Agent framework — **Rust core (NAPI-RS) + TypeScript orchestration** with Clean Architecture.
 
----
+[![CI](https://github.com/iamzulx/imzx-agent-sdk/actions/workflows/main.yml/badge.svg)](https://github.com/iamzulx/imzx-agent-sdk/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](https://github.com/iamzulx/imzx-agent-sdk/releases)
 
-## 🌟 Quick Start Guide for Beginners (Non-Programmers)
+## Features
 
-If you are not a programmer, don't worry! You can still run and use imzx by following these simple steps.
+- **Real ReAct Loop** — think → tool call → observe → repeat (actually works, not a stub)
+- **6 Built-in Tools** — read/write files, shell commands, search, web fetch
+- **Streaming** — SSE chunk-by-chunk delivery with async generators
+- **Hooks System** — PreToolUse, PostToolUse, AgentStart/End lifecycle middleware
+- **Subagents** — parallel/sequential/map-reduce child agent orchestration
+- **Context Engineering** — token budgeting, priority-based compaction, progressive disclosure
+- **MCP Client** — connect to external MCP servers (stdio + HTTP transport)
+- **6 Orchestration Patterns** — Router, Hierarchical, Consensus, Chaining, Evaluator-Optimizer, Parallelization
+- **OpenAI-Compatible API** — REST server with `/api/chat` endpoint
+- **Security** — SSRF protection, command allowlist, path sanitization, SecretBox API keys
 
-### 1. Initial Setup (Installation)
-Before starting, make sure you have the following installed:
-- **Node.js** (Latest LTS version)
-- **Git**
+## Quick Start
 
-**Automatic Installation:**
-Open your terminal/command prompt in the project folder and type:
 ```bash
-chmod +x setup.sh && ./setup.sh
+# 1. Clone
+git clone https://github.com/iamzulx/imzx-agent-sdk.git
+cd imzx-agent-sdk
+
+# 2. Install dependencies
+npm install --ignore-scripts
+
+# 3. Configure API key
+cp .env.example .env
+# Edit .env → set OPENROUTER_API_KEY or ANTHROPIC_API_KEY
+
+# 4. Run
+npx tsx interfaces/cli/cli-handler.ts run "What files are in this directory?"
 ```
-*This script will install the Node dependencies and create starter persona templates for you automatically.*
 
----
+## Usage
 
-### 2. Connecting to AI (Adding LLM)
-To make your assistant work, you need to provide an "API Key" from an AI provider (e.g., Anthropic/Claude).
+### CLI
 
-1. Look for a file named `.env.example` in the root folder.
-2. Copy/Duplicate that file and rename it to `.env`.
-3. Open the `.env` file with a text editor (like Notepad) and enter your API key:
-   `ANTHROPIC_API_KEY=your_api_key_here`
-4. Save the file.
-
----
-
-### 3. Creating Assistant Personalities (Adding Personas)
-You can define who your assistant should be. All "personalities" are stored in the `domain/personas/` folder.
-
-**How to create a new persona:**
-1. Open the `domain/personas/` folder.
-2. Create a new file ending in `.json` (e.g., `math-tutor.json`).
-3. Fill it using this format:
-   ```json
-   {
-     "description": "Patient Math Tutor",
-     "prompt": "You are a very patient math teacher. Explain complex concepts in simple language and provide everyday examples."
-   }
-   ```
-4. Save the file. Your assistant now has a new personality!
-
----
-
-### 4. How to Run Your Assistant
-Run the TypeScript CLI from the project root:
 ```bash
-npm start "Hello, who are you?" your-persona-name
+# Single prompt
+npx tsx interfaces/cli/cli-handler.ts run "Explain Rust ownership"
+
+# With persona and budget
+npx tsx interfaces/cli/cli-handler.ts run "Debug this code" --persona general-purpose --budget-usd 1.0
+
+# Interactive REPL
+npx tsx interfaces/cli/cli-handler.ts chat
+
+# REST API server
+npx tsx interfaces/cli/cli-handler.ts serve --port 3000
+
+# List personas
+npx tsx interfaces/cli/cli-handler.ts personas list
 ```
-*(Replace `your-persona-name` with the name of the JSON file you created in `domain/personas/`, without the `.json` extension. Omit it to use `general-purpose`.)*
 
----
+### REST API
 
-## 🚀 Key Features for Users
-- **Clean Architecture**: Highly modular and scalable design.
-- **Ultra Fast**: Powered by a Rust core for maximum performance.
-- **Smart Selection**: Automatically chooses the most cost-effective or fastest AI model (LLM Routing).
-- **Strong Memory**: Capable of remembering long conversations using an advanced memory system.
-- **Secure**: Built-in protections to ensure the AI cannot access private files on your computer.
+```bash
+# Start server
+npx tsx interfaces/cli/cli-handler.ts serve --port 3000
 
-## 📂 Simple Folder Structure
-- `domain/`: Core agent logic and persona definitions.
-- `application/`: Orchestration and use cases.
-- `adapters/`: Connections to Rust engine and File System.
-- `interfaces/`: Command Line Interface (CLI).
-- `core/`: High-performance Rust engine.
-- `bindings/`: Rust $\leftrightarrow$ TypeScript bridge.
-- `.env`: Where you store your secret API keys.
+# Synchronous request
+curl -X POST http://localhost:3000/api/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello!", "persona": "general-purpose"}'
+
+# OpenAI-compatible streaming
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
+
+# Health check
+curl http://localhost:3000/api/health
+```
+
+### SDK (Programmatic)
+
+```typescript
+import { createAgent, McpClient } from './interfaces/sdk/index.js';
+
+const agent = await createAgent({
+  persona: 'general-purpose',
+  budget: { maxTokens: 100_000, budgetUsd: 1.0 },
+});
+
+// Synchronous
+const response = await agent.run('What is Rust?');
+
+// Streaming
+for await (const chunk of agent.stream('Explain ownership')) {
+  if (chunk.type === 'text') process.stdout.write(chunk.content);
+}
+
+// Stats
+const stats = await agent.stats();
+console.log(`Tokens: ${stats.totalInputTokens} in / ${stats.totalOutputTokens} out`);
+```
+
+### MCP Client
+
+```typescript
+import { McpClient } from './adapters/external/mcp-adapter.js';
+
+const mcp = new McpClient();
+await mcp.addStdioServer('filesystem', 'npx', ['-y', '@modelcontextprotocol/server-filesystem', '/tmp']);
+
+const tools = mcp.listTools();
+const result = await mcp.callToolAuto('read_file', { path: '/tmp/test.txt' });
+```
+
+## Configuration
+
+Environment variables (in `.env`):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENROUTER_API_KEY` | OpenRouter API key | — |
+| `ANTHROPIC_API_KEY` | Anthropic API key | — |
+| `IMZX_API_KEY` | Generic API key | — |
+| `IMZX_LLM_BASE_URL` | Custom LLM endpoint | `https://openrouter.ai/api/v1/chat/completions` |
+| `IMZX_MODEL` | Model name | `anthropic/claude-sonnet-4` |
+
+## Architecture
+
+```
+CLI / REST API / SDK
+  └─ interfaces/ (presentation layer)
+      └─ application/ (AgentService — orchestration)
+          └─ adapters/
+              ├── external/ (AgentEngine, LlmProvider, RustBindingsAdapter, MCP)
+              ├── tools/ (ToolExecutor — 6 real tools)
+              └── persistence/ (FilePersonaRepository)
+                  └─ domain/ (Persona, AgentEnginePort)
+                      └─ core/ (Rust — NAPI-RS)
+                          ├── agent.rs (ReAct loop + hooks + context)
+                          ├── tools.rs (Rust tool implementations)
+                          ├── llm.rs (OpenRouter provider)
+                          ├── hooks.rs (lifecycle middleware)
+                          ├── subagent.rs (child agent orchestration)
+                          ├── streaming.rs (SSE chunks)
+                          ├── context_manager.rs (token budgeting)
+                          └── orchestration.rs (6 strategies)
+```
+
+## Project Structure
+
+```
+imzx-agent-sdk/
+├── core/                          # Rust core (NAPI-RS)
+│   ├── src/
+│   │   ├── agent.rs               # ReAct loop + hooks + context
+│   │   ├── tools.rs               # Tool registry + security
+│   │   ├── llm.rs                 # LLM provider (OpenRouter)
+│   │   ├── hooks.rs               # Middleware lifecycle
+│   │   ├── subagent.rs            # Child agent orchestration
+│   │   ├── streaming.rs           # SSE streaming
+│   │   ├── context_manager.rs     # Token budgeting
+│   │   ├── orchestration.rs       # 6 strategies
+│   │   ├── memory.rs              # Memory management
+│   │   ├── embedding.rs           # Local embeddings
+│   │   ├── strategy.rs            # Weighted scoring
+│   │   ├── types.rs               # Value objects
+│   │   ├── error.rs               # Error types
+│   │   └── lib.rs                 # NAPI-RS + PyO3 bindings
+│   └── Cargo.toml
+├── domain/                        # Domain layer (pure types)
+│   ├── personas/                  # Persona schema + repository
+│   └── ports/                     # AgentEnginePort interface
+├── application/                   # Application layer (services)
+│   ├── agent-service.ts           # Main orchestrator
+│   └── use-cases/                 # GetPersonaUseCase
+├── adapters/                      # Infrastructure layer
+│   ├── external/
+│   │   ├── agent-engine.ts        # Real ReAct loop (TypeScript)
+│   │   ├── llm-provider.ts        # OpenAI-compatible client
+│   │   ├── rust-bindings-adapter.ts  # NAPI-RS bridge
+│   │   └── mcp-adapter.ts         # MCP client
+│   ├── tools/
+│   │   └── tool-executor.ts       # 6 real tool implementations
+│   └── persistence/
+│       └── file-persona-repository.ts
+├── interfaces/                    # Presentation layer
+│   ├── cli/
+│   │   └── cli-handler.ts         # Full CLI (7 subcommands)
+│   ├── api/
+│   │   └── server.ts              # REST API + SSE streaming
+│   └── sdk/
+│       └── index.ts               # Programmatic API
+├── docs/
+│   └── architecture.md            # Architecture documentation
+├── .github/workflows/main.yml     # CI pipeline
+├── ROADMAP.md                     # Development roadmap
+├── CLAUDE.md                      # AI assistant context
+├── LICENSE                        # MIT License
+├── package.json                   # Node.js config
+└── setup.sh                       # Setup script
+```
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Core Engine | Rust + NAPI-RS | High-performance agent loop, tool execution |
+| Orchestration | TypeScript (ESM) | Agent service, persona management, API |
+| Validation | Zod | Runtime type safety |
+| LLM Client | fetch (native) | OpenAI-compatible API calls |
+| MCP | Custom client | External tool server integration |
+| CI | GitHub Actions | Rust fmt/clippy/test + TypeScript typecheck |
+
+## License
+
+MIT License — Copyright (c) 2026 Iamzulx
+
+See [LICENSE](LICENSE) for details.
