@@ -77,22 +77,22 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ### Phase 3 — Advanced Features
 
-- **3.1 Multi-turn conversation** [TODO]
+- **3.1 Multi-turn conversation** [DONE]
   Chat mode persist context antar user messages.
 
-- **3.2 Code execution tool** [TODO]
+- **3.2 Code execution tool** [DONE]
   Tool `run_code(language, code)` — execute JS/Python snippet.
 
-- **3.3 Agent state save/restore** [TODO]
+- **3.3 Agent state save/restore** [DONE]
   Serialize state ke JSON file, bisa resume setelah restart.
 
-- **3.4 Multiple personas mid-chat** [TODO]
+- **3.4 Multiple personas mid-chat** [DONE]
   `/persona <name>` switch tanpa restart.
 
-- **3.5 Observability** [TODO]
+- **3.5 Observability** [DONE]
   Log setiap step ke JSONL file.
 
-- **3.6 Streaming polish** [TODO]
+- **3.6 Streaming polish** [DONE]
   Terminal spinner, progress bar, proper color coding.
 
 ---

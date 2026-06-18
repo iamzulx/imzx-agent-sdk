@@ -121,9 +121,8 @@ export class CliHandler {
         } else if (chunk.type === 'tool_result') {
           process.stdout.write(`${c.dim}✓${c.reset}`);
         } else if (chunk.type === 'thinking') {
-          if (this.verbose) {
-            process.stdout.write(`${c.dim}[thinking: ${chunk.content.substring(0, 80)}...]${c.reset}`);
-          }
+          // [3.6] Show thinking indicator
+          process.stdout.write(`${c.dim}⟳ ${chunk.content}${c.reset}\n`);
         } else if (chunk.type === 'error') {
           process.stderr.write(`\n${c.red}[Error: ${chunk.content}]${c.reset}\n`);
         } else if (chunk.type === 'done') {
@@ -218,7 +217,20 @@ export class CliHandler {
             console.log(`${c.cyan}/stats${c.reset} — Show session statistics`);
             console.log(`${c.cyan}/clear${c.reset} — Clear screen`);
             console.log(`${c.cyan}/persona <name>${c.reset} — Switch persona`);
+            console.log(`${c.cyan}/history${c.reset} — Show conversation history count`);
+            console.log(`${c.cyan}/reset${c.reset} — Clear conversation history`);
+            console.log(`${c.cyan}/save [path]${c.reset} — Save agent state to file`);
+            console.log(`${c.cyan}/load [path]${c.reset} — Load agent state from file`);
             console.log(`${c.cyan}/exit${c.reset} — Quit chat`);
+            break;
+          case '/history':
+            const histLen = this.agentService.getCurrentPersona();
+            console.log(`${c.cyan}Conversation active with persona: ${histLen?.id || currentPersona}${c.reset}`);
+            break;
+          case '/reset':
+            // Re-initialize to clear history
+            await this.agentService.execute(currentPersona, '__init__');
+            console.log(`${c.yellow}Conversation history cleared.${c.reset}`);
             break;
           default:
             console.log(`${c.red}Unknown command: ${cmd}${c.reset}`);

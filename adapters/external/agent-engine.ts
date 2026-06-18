@@ -353,4 +353,46 @@ export class AgentEngine implements AgentEnginePort {
     this.config.maxTokens = maxTokens;
     this.config.budgetUsd = budgetUsd;
   }
+
+  // --- [3.3] State save/restore ---
+
+  /** Serialize agent state to JSON string. */
+  saveState(): string {
+    return JSON.stringify({
+      agentId: this.agentId,
+      personaPrompt: this.personaPrompt,
+      messages: this.messages,
+      stats: this.stats,
+      model: this.config.model,
+      maxTokens: this.config.maxTokens,
+      budgetUsd: this.config.budgetUsd,
+      savedAt: new Date().toISOString(),
+    }, null, 2);
+  }
+
+  /** Restore agent state from JSON string. */
+  loadState(json: string): void {
+    const state = JSON.parse(json);
+    this.agentId = state.agentId || '';
+    this.personaPrompt = state.personaPrompt || '';
+    this.messages = state.messages || [];
+    this.stats = state.stats || { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
+    if (state.maxTokens) this.config.maxTokens = state.maxTokens;
+    if (state.budgetUsd) this.config.budgetUsd = state.budgetUsd;
+  }
+
+  /** Save state to file. */
+  async saveStateToFile(filePath: string): Promise<void> {
+    const { writeFile, mkdir } = await import('node:fs/promises');
+    const { dirname } = await import('node:path');
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, this.saveState(), 'utf-8');
+  }
+
+  /** Load state from file. */
+  async loadStateFromFile(filePath: string): Promise<void> {
+    const { readFile } = await import('node:fs/promises');
+    const data = await readFile(filePath, 'utf-8');
+    this.loadState(data);
+  }
 }

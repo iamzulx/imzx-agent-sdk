@@ -137,12 +137,27 @@ export function getToolDefinitions(): Array<{
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'run_code',
+        description: 'Execute a code snippet in a sandboxed subprocess. Supports JavaScript (node) and Python (python3).',
+        parameters: {
+          type: 'object',
+          properties: {
+            language: { type: 'string', description: 'Language: "javascript" or "python"', enum: ['javascript', 'python'] },
+            code: { type: 'string', description: 'Code to execute' },
+          },
+          required: ['language', 'code'],
+        },
+      },
+    },
   ];
 }
 
 // --- Tool Approval ---
 
-const DANGEROUS_TOOLS = new Set(['write_file', 'edit_file', 'run_command']);
+const DANGEROUS_TOOLS = new Set(['write_file', 'edit_file', 'run_command', 'run_code']);
 
 /** Check if tool needs user approval. Returns true if approved. */
 async function requestApproval(toolName: string, args: Record<string, unknown>): Promise<boolean> {
@@ -451,6 +466,27 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         return `${expr} = ${result}`;
       } catch (err: any) {
         return `Math error: ${err.message}`;
+      }
+    }
+
+    case 'run_code': {
+      const lang = args.language as string;
+      const code = args.code as string;
+      const tmpFile = `/tmp/imzx_code_${Date.now()}.${lang === 'python' ? 'py' : 'mjs'}`;
+      try {
+        await fs.writeFile(tmpFile, code, 'utf-8');
+        const cmd = lang === 'python' ? `python3 ${tmpFile}` : `node ${tmpFile}`;
+        const output = execSync(cmd, {
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024,
+          encoding: 'utf-8',
+          env: { ...process.env, TERM: 'dumb' },
+        });
+        return output.substring(0, 50000) || '(no output)';
+      } catch (err: any) {
+        return `Code error: ${err.stderr || err.message}`.substring(0, 5000);
+      } finally {
+        try { await fs.unlink(tmpFile); } catch {}
       }
     }
 
