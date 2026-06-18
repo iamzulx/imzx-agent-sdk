@@ -1,13 +1,27 @@
 {
-  "name": "imzx",
+  "name": "imzx-agent-sdk",
   "version": "0.3.0",
-  "description": "TypeScript Claude Agent SDK framework",
-  "main": "interfaces/cli/cli-handler.ts",
+  "description": "High-performance AI Agent SDK — Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",
+  "main": "interfaces/sdk/index.ts",
+  "bin": {
+    "imzx": "interfaces/cli/cli-handler.ts"
+  },
+  "exports": {
+    ".": "./interfaces/sdk/index.ts",
+    "./cli": "./interfaces/cli/cli-handler.ts",
+    "./server": "./interfaces/api/server.ts",
+    "./mcp": "./adapters/external/mcp-adapter.ts"
+  },
   "scripts": {
-    "start": "tsx interfaces/cli/cli-handler.ts",
+    "start": "tsx interfaces/cli/cli-handler.ts run",
+    "chat": "tsx interfaces/cli/cli-handler.ts chat",
+    "serve": "tsx interfaces/cli/cli-handler.ts serve",
+    "help": "tsx interfaces/cli/cli-handler.ts help",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "build:rust": "cd core && cargo build --release",
+    "build:all": "npm run build:rust && npm run typecheck"
   },
   "dependencies": {
     "dotenv": "16.4.5",
@@ -19,5 +33,14 @@
     "tsx": "4.15.7",
     "typescript": "5.4.5",
     "vitest": "4.1.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "author": "Iamzulx",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iamzulx/imzx-agent-sdk.git"
   }
 }
