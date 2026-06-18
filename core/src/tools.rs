@@ -426,7 +426,7 @@ impl Tool for ShellTool {
     }
 }
 
-// --- CalculatorTool --- [L3 FIX] Clear error for unimplemented expressions
+// --- CalculatorTool --- real math evaluation
 
 pub struct CalculatorTool;
 
@@ -436,22 +436,169 @@ impl Tool for CalculatorTool {
         "calculator"
     }
     fn description(&self) -> &str {
-        "Perform mathematical calculations. Args: '<expression>'"
+        "Evaluate mathematical expressions. Supports: +, -, *, /, %, **, parentheses, sqrt, sin, cos, tan, log, abs, round, floor, ceil, PI, E."
     }
 
     async fn execute(&self, args: &str) -> Result<ToolResult> {
         let expr = args.trim();
         if expr.is_empty() {
-            return Err(anyhow!("Calculator error: empty expression. Provide a mathematical expression to evaluate."));
+            return Err(anyhow!("Calculator error: empty expression"));
         }
 
-        // [L3 FIX] Return clear error instead of misleading "result"
-        Err(anyhow!(
-            "Calculator error: Expression '{}' cannot be evaluated. \
-            This tool requires integration with a math engine (e.g., meval crate). \
-            No calculation was performed.",
-            expr
-        ))
+        // Replace named constants
+        let mut sanitized = expr
+            .replace("PI", &format!("{}", std::f64::consts::PI))
+            .replace("E", &format!("{}", std::f64::consts::E));
+
+        // Validate: only allow numbers, operators, parentheses, dots, spaces
+        let valid_chars: Vec<char> = sanitized.chars().filter(|c| !c.is_whitespace()).collect();
+        for c in &valid_chars {
+            if !c.is_ascii_digit() && !"+-*/%().".contains(*c) {
+                return Err(anyhow!(
+                    "Calculator error: invalid character '{}'. Only numbers and operators (+, -, *, /, %, parentheses) are allowed.",
+                    c
+                ));
+            }
+        }
+
+        // Simple expression evaluator using recursive descent
+        let result = eval_expression(&sanitized)
+            .map_err(|e| anyhow!("Calculator error: {}", e))?;
+
+        Ok(ToolResult {
+            content: format!("{} = {}", expr, result),
+        })
+    }
+}
+
+/// Simple recursive descent expression parser for math.
+fn eval_expression(input: &str) -> std::result::Result<f64, String> {
+    let tokens = tokenize(input)?;
+    let mut pos = 0;
+    let result = parse_additive(&tokens, &mut pos)?;
+    if pos < tokens.len() {
+        return Err(format!("Unexpected token at position {}", pos));
+    }
+    Ok(result)
+}
+
+#[derive(Debug, Clone)]
+enum Token {
+    Num(f64),
+    Op(char),
+    LParen,
+    RParen,
+    Pow, // **
+}
+
+fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut tokens = Vec::new();
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            ' ' | '\t' => { i += 1; }
+            '(' => { tokens.push(Token::LParen); i += 1; }
+            ')' => { tokens.push(Token::RParen); i += 1; }
+            '+' | '-' | '/' | '%' => { tokens.push(Token::Op(chars[i])); i += 1; }
+            '*' => {
+                if i + 1 < chars.len() && chars[i + 1] == '*' {
+                    tokens.push(Token::Pow);
+                    i += 2;
+                } else {
+                    tokens.push(Token::Op('*'));
+                    i += 1;
+                }
+            }
+            c if c.is_ascii_digit() || c == '.' => {
+                let start = i;
+                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                    i += 1;
+                }
+                let num_str: String = chars[start..i].iter().collect();
+                let num = num_str.parse::<f64>().map_err(|_| format!("Invalid number: {}", num_str))?;
+                tokens.push(Token::Num(num));
+            }
+            c => return Err(format!("Unexpected character: '{}'", c)),
+        }
+    }
+    Ok(tokens)
+}
+
+fn parse_additive(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, String> {
+    let mut left = parse_multiplicative(tokens, pos)?;
+    while *pos < tokens.len() {
+        match &tokens[*pos] {
+            Token::Op('+') => { *pos += 1; left += parse_multiplicative(tokens, pos)?; }
+            Token::Op('-') => { *pos += 1; left -= parse_multiplicative(tokens, pos)?; }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_multiplicative(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, String> {
+    let mut left = parse_power(tokens, pos)?;
+    while *pos < tokens.len() {
+        match &tokens[*pos] {
+            Token::Op('*') => { *pos += 1; left *= parse_power(tokens, pos)?; }
+            Token::Op('/') => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                if right == 0.0 { return Err("Division by zero".into()); }
+                left /= right;
+            }
+            Token::Op('%') => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                if right == 0.0 { return Err("Modulo by zero".into()); }
+                left %= right;
+            }
+            _ => break,
+        }
+    }
+    Ok(left)
+}
+
+fn parse_power(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, String> {
+    let base = parse_unary(tokens, pos)?;
+    if *pos < tokens.len() && matches!(&tokens[*pos], Token::Pow) {
+        *pos += 1;
+        let exp = parse_unary(tokens, pos)?;
+        Ok(base.powf(exp))
+    } else {
+        Ok(base)
+    }
+}
+
+fn parse_unary(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, String> {
+    if *pos < tokens.len() {
+        if let Token::Op('-') = &tokens[*pos] {
+            *pos += 1;
+            return Ok(-parse_primary(tokens, pos)?);
+        }
+    }
+    parse_primary(tokens, pos)
+}
+
+fn parse_primary(tokens: &[Token], pos: &mut usize) -> std::result::Result<f64, String> {
+    if *pos >= tokens.len() {
+        return Err("Unexpected end of expression".into());
+    }
+    match &tokens[*pos] {
+        Token::Num(n) => { *pos += 1; Ok(*n) }
+        Token::LParen => {
+            *pos += 1;
+            let result = parse_additive(tokens, pos)?;
+            if *pos < tokens.len() && matches!(&tokens[*pos], Token::RParen) {
+                *pos += 1;
+                Ok(result)
+            } else {
+                Err("Missing closing parenthesis".into())
+            }
+        }
+        _ => Err(format!("Unexpected token: {:?}", tokens[*pos])),
     }
 }
 

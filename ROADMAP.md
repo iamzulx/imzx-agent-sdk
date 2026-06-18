@@ -66,13 +66,13 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 - **2.4 Tool approval** [DONE]
   Sebelum execute tool berbahaya (write_file, run_command), minta user konfirmasi.
 
-- **2.5 Rust CalculatorTool** [TODO]
+- **2.5 Rust CalculatorTool** [DONE]
   Implementasi actual math eval di Rust core.
 
-- **2.6 Rust WebSearchTool** [TODO]
+- **2.6 Rust WebSearchTool** [DONE]
   Integrasi real web search (reqwest + search API).
 
-- **2.7 Database tool cleanup** [TODO]
+- **2.7 Database tool cleanup** [DONE]
   Hapus atau implementasi SQLite.
 
 ### Phase 3 — Advanced Features
