@@ -1,7 +1,7 @@
 {
   "name": "imzx-agent-sdk",
   "version": "0.3.0",
-  "description": "High-performance AI Agent SDK — Rust core (NAPI-RS) + TypeScript orchestration",
+  "description": "High-performance AI Agent SDK \u2014 Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",
   "main": "interfaces/sdk/index.ts",
   "bin": {
@@ -11,7 +11,8 @@
     ".": "./interfaces/sdk/index.ts",
     "./cli": "./interfaces/cli/cli-handler.ts",
     "./server": "./interfaces/api/server.ts",
-    "./mcp": "./adapters/external/mcp-adapter.ts"
+    "./mcp": "./adapters/external/mcp-adapter.ts",
+    "./python": "./interfaces/sdk/python/imzx.py"
   },
   "scripts": {
     "start": "tsx interfaces/cli/cli-handler.ts run",
@@ -21,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build:rust": "cd core && cargo build --release",
-    "build:all": "npm run build:rust && npm run typecheck"
+    "build:all": "npm run build:rust && npm run typecheck",
+    "demo:python": "python3 interfaces/sdk/python/imzx.py"
   },
   "dependencies": {
     "dotenv": "16.4.5",
