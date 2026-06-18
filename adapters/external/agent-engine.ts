@@ -15,6 +15,7 @@ import { LlmProvider, type LlmMessage, type LlmTool, type LlmProviderConfig } fr
 import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../../domain/ports/agent-engine.js';
 import { executeTool, getToolDefinitions } from '../tools/tool-executor.js';
 import { buildSystemPrompt } from '../tools/prompts.js';
+import { AgentBrain } from '../memory/agent-brain.js';
 
 export interface AgentEngineConfig extends LlmProviderConfig {
   maxIterations?: number;
@@ -46,6 +47,8 @@ export class AgentEngine implements AgentEnginePort {
   private state: AgentState = 'idle';
   private agentId: string = '';
   private personaPrompt: string = '';
+  /** Self-improving brain — memory, reflection, skills, self-modification. */
+  public brain: AgentBrain;
 
   constructor(config: AgentEngineConfig) {
     this.config = {
@@ -59,6 +62,7 @@ export class AgentEngine implements AgentEnginePort {
     };
     this.llm = new LlmProvider(config);
     this.tools = getToolDefinitions();
+    this.brain = new AgentBrain();
   }
 
   async initialize(id: string, description: string, prompt: string): Promise<string> {
@@ -163,8 +167,21 @@ export class AgentEngine implements AgentEnginePort {
   // --- Main ReAct loop ---
 
   async run(prompt: string): Promise<string> {
+    // [Brain] Process user message for learning signals
+    this.brain.processUserMessage(prompt);
+    this.brain.onTaskStart();
+
     this.messages.push({ role: 'user', content: prompt });
     this.state = 'thinking';
+
+    // [Brain] Enhance system prompt with memory, reflections, skills
+    const enhancedSystem = this.brain.buildEnhancedPrompt(
+      this.messages[0]?.content || '',
+      prompt
+    );
+    if (this.messages[0]?.role === 'system') {
+      this.messages[0].content = enhancedSystem;
+    }
 
     for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       if (this.config.verbose) {
@@ -192,6 +209,7 @@ export class AgentEngine implements AgentEnginePort {
         const finalAnswer = response.content || '';
         this.messages.push({ role: 'assistant', content: finalAnswer });
         this.state = 'idle';
+        this.brain.onTaskEnd(prompt, finalAnswer, 'success'); // [Brain] task done
         return finalAnswer;
       }
 
@@ -209,6 +227,7 @@ export class AgentEngine implements AgentEnginePort {
       // Execute each tool call
       for (const toolCall of response.toolCalls) {
         this.state = 'calling_tool';
+        this.brain.onToolUse(toolCall.name); // [Brain] track tool use
         if (this.config.verbose) {
           process.stderr.write(`  [Tool] ${toolCall.name}(${toolCall.arguments.substring(0, 100)})\n`);
         }
@@ -237,6 +256,7 @@ export class AgentEngine implements AgentEnginePort {
     }
 
     this.state = 'idle';
+    this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
     return 'Maximum iterations reached without a final answer.';
   }
 

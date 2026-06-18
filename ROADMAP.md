@@ -97,7 +97,17 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ---
 
-## v0.5.0 — Production Readiness (Future)
+## v0.5.0 — Self-Improving Agent (Completed 2026-06-18)
+
+Based on Reflexion (Princeton/MIT), HyperAgents (Meta/Oxford 2026), SAGE (Peking 2026), Mem0, Hermes Agent.
+
+- **5.1 Persistent Memory** [DONE] — cross-session memory (user prefs, corrections, knowledge, sessions)
+- **5.2 Self-Reflection** [DONE] — after-task evaluation, lesson extraction, reflection injection
+- **5.3 Skill System** [DONE] — save/load/search skills, auto-extraction from successful tasks
+- **5.4 Self-Modification** [DONE] — performance tracking, prompt evolution, workflow optimization
+- **5.5 AgentBrain** [DONE] — central coordinator wiring all 4 systems into ReAct loop
+
+## v0.6.0 — Production Readiness (Future)
 
 - **5.1** Real embeddings (fastembed-rs atau remote API)
 - **5.2** NAPI binary build (cross-platform .node files)
