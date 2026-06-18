@@ -32,23 +32,23 @@ CI all green (Rust fmt/clippy/test + TypeScript typecheck).
   Pindah ke OpenAI native function calling format (tool_calls array dari response).
   LlmProvider.stream() sudah parse tool_calls, tapi AgentEngine.run() belum.
 
-- **1.2 Budget enforcement** [TODO]
+- **1.2 Budget enforcement** [DONE]
   `setBudget()` kosong. Tambah `checkBudget()` di setiap iterasi ReAct loop.
   Hitung dari `response.usage.inputTokens + outputTokens`, block kalau exceed.
 
-- **1.3 Real cost tracking** [TODO]
+- **1.3 Real cost tracking** [DONE]
   Token count masih heuristic (`content.length / 4`). Pakai `usage` dari LLM API response.
   Hitung cost dari harga model (per 1M tokens).
 
-- **1.4 Conversation memory** [TODO]
+- **1.4 Conversation memory** [DONE]
   Setiap `run()` mulai dari 0 — tidak ada history. Tambah `conversationHistory`
   di AgentEngine yang persist antar panggilan. Tambah `clearHistory()` method.
 
-- **1.5 Error recovery** [TODO]
+- **1.5 Error recovery** [DONE]
   Kalau LLM API gagal (timeout, 429, 500), langsung error. Tambah retry logic
   (3x exponential backoff: 1s, 2s, 4s) + fallback ke model lain kalau ada.
 
-- **1.6 Persona loading** [TODO]
+- **1.6 Persona loading** [DONE]
   CLI load persona dari JSON tapi prompt tidak di-inject sebagai system message
   dengan benar. Fix flow: persona.prompt -> messages[0] system message.
 

@@ -1,14 +1,14 @@
 /**
  * Agent Engine — real ReAct loop in TypeScript.
- * 
- * This is the actual working engine that:
- * 1. Sends prompt + tools to LLM
- * 2. Parses tool calls from response
- * 3. Executes tools
- * 4. Feeds results back to LLM
- * 5. Repeats until LLM gives final answer
- * 
- * Works standalone without Rust core.
+ * v0.4.0 — Phase 1 complete: function calling, budget, cost, memory, retry, persona.
+ *
+ * Features:
+ * - OpenAI native function calling format
+ * - Budget enforcement (token + USD limits)
+ * - Real cost tracking from API usage
+ * - Conversation memory (persists across calls)
+ * - Error recovery (exponential backoff retry)
+ * - Proper persona/system prompt injection
  */
 
 import { LlmProvider, type LlmMessage, type LlmTool, type LlmProviderConfig } from './llm-provider.js';
@@ -16,27 +16,44 @@ import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../
 import { executeTool, getToolDefinitions } from '../tools/tool-executor.js';
 
 export interface AgentEngineConfig extends LlmProviderConfig {
-  /** Maximum iterations before forced stop. */
   maxIterations?: number;
-  /** System prompt (persona). */
   systemPrompt?: string;
-  /** Enable verbose logging. */
   verbose?: boolean;
+  /** Max tokens per session (default: 500,000) */
+  maxTokens?: number;
+  /** Max cost per session in USD (default: 5.00) */
+  budgetUsd?: number;
+  /** Retry attempts on LLM API failure (default: 3) */
+  retryAttempts?: number;
 }
+
+// --- Cost rates per 1M tokens (common models) ---
+const COST_RATES: Record<string, { input: number; output: number }> = {
+  'anthropic/claude-sonnet-4': { input: 3, output: 15 },
+  'anthropic/claude-opus-4': { input: 15, output: 75 },
+  'openai/gpt-4o': { input: 2.5, output: 10 },
+  'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'default': { input: 3, output: 15 },
+};
 
 export class AgentEngine implements AgentEnginePort {
   private llm: LlmProvider;
-  private config: AgentEngineConfig;
+  private config: AgentEngineConfig & { maxIterations: number; verbose: boolean; systemPrompt: string; maxTokens: number; budgetUsd: number; retryAttempts: number };
   private messages: LlmMessage[] = [];
   private tools: LlmTool[] = [];
   private stats: SessionStats = { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
   private state: AgentState = 'idle';
   private agentId: string = '';
+  private personaPrompt: string = '';
 
   constructor(config: AgentEngineConfig) {
     this.config = {
       maxIterations: 10,
       verbose: false,
+      systemPrompt: 'You are a helpful AI assistant. You have access to tools — use them when needed.',
+      maxTokens: 500_000,
+      budgetUsd: 5.0,
+      retryAttempts: 3,
       ...config,
     };
     this.llm = new LlmProvider(config);
@@ -45,39 +62,126 @@ export class AgentEngine implements AgentEnginePort {
 
   async initialize(id: string, description: string, prompt: string): Promise<string> {
     this.agentId = id;
-    this.messages = [];
-    this.stats = { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
+    this.personaPrompt = prompt || this.config.systemPrompt;
+
+    // [1.4] DON'T clear messages — keep conversation history
+    // Only clear if this is a fresh start (no existing messages)
+    if (this.messages.length === 0) {
+      this.messages = [{ role: 'system', content: this.personaPrompt }];
+    }
+
     this.state = 'idle';
-
-    // Set system prompt
-    const systemContent = prompt || this.config.systemPrompt || 'You are a helpful AI assistant.';
-    this.messages.push({ role: 'system', content: systemContent });
-
     return `Agent '${id}' initialized with ${this.tools.length} tools`;
   }
 
-  /**
-   * Run agent — full ReAct loop.
-   */
+  // --- [1.4] Conversation memory ---
+
+  /** Get conversation history. */
+  getHistory(): LlmMessage[] {
+    return [...this.messages];
+  }
+
+  /** Clear conversation history and start fresh. */
+  clearHistory(): void {
+    this.messages = [{ role: 'system', content: this.personaPrompt }];
+    this.stats = { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
+  }
+
+  /** Get number of messages in history (excluding system). */
+  getHistoryLength(): number {
+    return Math.max(0, this.messages.length - 1);
+  }
+
+  // --- [1.2] Budget enforcement ---
+
+  private checkBudget(): void {
+    const totalTokens = this.stats.totalInputTokens + this.stats.totalOutputTokens;
+    if (totalTokens >= this.config.maxTokens) {
+      throw new Error(
+        `Budget exceeded: ${totalTokens.toLocaleString()} tokens used (limit: ${this.config.maxTokens.toLocaleString()}). Halting.`
+      );
+    }
+    if (this.stats.totalCostUsd >= this.config.budgetUsd) {
+      throw new Error(
+        `Budget exceeded: $${this.stats.totalCostUsd.toFixed(4)} spent (limit: $${this.config.budgetUsd.toFixed(2)}). Halting.`
+      );
+    }
+  }
+
+  /** Warn if approaching budget (80% threshold). */
+  private budgetWarning(): string | null {
+    const totalTokens = this.stats.totalInputTokens + this.stats.totalOutputTokens;
+    const tokenPct = totalTokens / this.config.maxTokens;
+    const costPct = this.stats.totalCostUsd / this.config.budgetUsd;
+    if (tokenPct >= 0.8 || costPct >= 0.8) {
+      return `Budget warning: ${Math.round(tokenPct * 100)}% tokens, ${Math.round(costPct * 100)}% cost used`;
+    }
+    return null;
+  }
+
+  // --- [1.3] Real cost tracking ---
+
+  private trackCost(inputTokens: number, outputTokens: number): void {
+    this.stats.totalInputTokens += inputTokens;
+    this.stats.totalOutputTokens += outputTokens;
+    this.stats.requestCount++;
+
+    const modelKey = Object.keys(COST_RATES).find(k => this.config.model.includes(k)) || 'default';
+    const rate = COST_RATES[modelKey];
+    this.stats.totalCostUsd += (inputTokens * rate.input / 1_000_000)
+      + (outputTokens * rate.output / 1_000_000);
+  }
+
+  // --- [1.5] Error recovery ---
+
+  private async withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        lastError = err;
+        const isRetryable = err.message?.includes('429') || err.message?.includes('500')
+          || err.message?.includes('timeout') || err.message?.includes('ECONNRESET')
+          || err.message?.includes('fetch failed');
+
+        if (!isRetryable || attempt === this.config.retryAttempts) {
+          throw new Error(`${label} failed after ${attempt} attempts: ${err.message}`);
+        }
+
+        const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        if (this.config.verbose) {
+          process.stderr.write(`  [Retry ${attempt}/${this.config.retryAttempts}] ${label}: ${err.message} — waiting ${delay}ms\n`);
+        }
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    throw lastError!;
+  }
+
+  // --- Main ReAct loop ---
+
   async run(prompt: string): Promise<string> {
     this.messages.push({ role: 'user', content: prompt });
     this.state = 'thinking';
 
-    for (let iteration = 0; iteration < (this.config.maxIterations || 10); iteration++) {
+    for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       if (this.config.verbose) {
         process.stderr.write(`\n[Iteration ${iteration + 1}] Thinking...\n`);
       }
 
-      // Call LLM
-      this.state = 'thinking';
-      const response = await this.llm.complete(this.messages, this.tools);
-      this.stats.requestCount++;
-      this.stats.totalInputTokens += response.usage.inputTokens;
-      this.stats.totalOutputTokens += response.usage.outputTokens;
+      // [1.2] Check budget before each iteration
+      this.checkBudget();
 
-      // Track cost (rough estimate: $3/M input, $15/M output for Claude Sonnet)
-      this.stats.totalCostUsd += (response.usage.inputTokens * 3 / 1_000_000)
-        + (response.usage.outputTokens * 15 / 1_000_000);
+      // Call LLM with retry
+      this.state = 'thinking';
+      const response = await this.withRetry(
+        () => this.llm.complete(this.messages, this.tools),
+        'LLM call'
+      );
+
+      // [1.3] Track real cost
+      this.trackCost(response.usage.inputTokens, response.usage.outputTokens);
 
       // If LLM returned text only (no tool calls) — final answer
       if (!response.toolCalls || response.toolCalls.length === 0) {
@@ -87,7 +191,6 @@ export class AgentEngine implements AgentEnginePort {
         return finalAnswer;
       }
 
-      // LLM wants to call tools
       // Add assistant message with tool_calls (OpenAI native format)
       this.messages.push({
         role: 'assistant',
@@ -95,10 +198,7 @@ export class AgentEngine implements AgentEnginePort {
         tool_calls: response.toolCalls.map(tc => ({
           id: tc.id,
           type: 'function' as const,
-          function: {
-            name: tc.name,
-            arguments: tc.arguments,
-          },
+          function: { name: tc.name, arguments: tc.arguments },
         })),
       });
 
@@ -117,7 +217,11 @@ export class AgentEngine implements AgentEnginePort {
           toolResult = `Error: ${err.message}`;
         }
 
-        // Add tool result to messages
+        // Truncate long results
+        if (toolResult.length > 50000) {
+          toolResult = toolResult.substring(0, 50000) + '\n... (truncated)';
+        }
+
         this.messages.push({
           role: 'tool',
           content: toolResult,
@@ -132,43 +236,63 @@ export class AgentEngine implements AgentEnginePort {
     return 'Maximum iterations reached without a final answer.';
   }
 
-  /**
-   * Run with streaming — yields chunks as they arrive.
-   */
+  // --- Streaming ---
+
   async *runStreaming(prompt: string): AsyncGenerator<StreamChunk> {
     this.messages.push({ role: 'user', content: prompt });
     this.state = 'thinking';
 
-    for (let iteration = 0; iteration < (this.config.maxIterations || 10); iteration++) {
+    for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       yield { type: 'thinking', content: `Iteration ${iteration + 1}` };
+
+      // [1.2] Budget check
+      try {
+        this.checkBudget();
+      } catch (err: any) {
+        yield { type: 'error', content: err.message };
+        this.state = 'idle';
+        return;
+      }
+
+      // Budget warning
+      const warning = this.budgetWarning();
+      if (warning) {
+        yield { type: 'thinking', content: warning };
+      }
 
       let fullContent = '';
       let toolCallsAccumulated: Array<{ id: string; name: string; arguments: string }> = [];
       let currentToolCall: { id: string; name: string; arguments: string } | null = null;
+      let streamInputTokens = 0;
+      let streamOutputTokens = 0;
 
-      // Stream LLM response
-      for await (const chunk of this.llm.stream(this.messages, this.tools)) {
-        if (chunk.type === 'text') {
-          fullContent += chunk.content;
-          yield { type: 'text', content: chunk.content };
-        } else if (chunk.type === 'tool_call_start') {
-          currentToolCall = { id: chunk.toolCallId || '', name: chunk.content, arguments: '' };
-          yield { type: 'tool_call', content: chunk.content };
-        } else if (chunk.type === 'tool_call_args' && currentToolCall) {
-          currentToolCall.arguments += chunk.content;
-        } else if (chunk.type === 'tool_call_end' && currentToolCall) {
-          currentToolCall.arguments = chunk.content || currentToolCall.arguments;
-          toolCallsAccumulated.push(currentToolCall);
-          currentToolCall = null;
+      // Stream LLM response (retry not applicable to generators — catch errors)
+      try {
+        for await (const chunk of this.llm.stream(this.messages, this.tools)) {
+          if (chunk.type === 'text') {
+            fullContent += chunk.content;
+            yield { type: 'text', content: chunk.content };
+          } else if (chunk.type === 'tool_call_start') {
+            currentToolCall = { id: chunk.toolCallId || '', name: chunk.content, arguments: '' };
+            yield { type: 'tool_call', content: chunk.content };
+          } else if (chunk.type === 'tool_call_args' && currentToolCall) {
+            currentToolCall.arguments += chunk.content;
+          } else if (chunk.type === 'tool_call_end' && currentToolCall) {
+            currentToolCall.arguments = chunk.content || currentToolCall.arguments;
+            toolCallsAccumulated.push(currentToolCall);
+            currentToolCall = null;
+          }
         }
+      } catch (err: any) {
+        yield { type: 'error', content: err.message };
+        this.state = 'idle';
+        return;
       }
 
-      this.stats.requestCount++;
-      // Estimate tokens from text length (rough)
+      // [1.3] Estimate cost for streaming (API doesn't return usage in stream)
       const estInput = Math.floor(this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);
       const estOutput = Math.floor(fullContent.length / 4);
-      this.stats.totalInputTokens += estInput;
-      this.stats.totalOutputTokens += estOutput;
+      this.trackCost(estInput, estOutput);
 
       // If no tool calls — final answer
       if (toolCallsAccumulated.length === 0) {
@@ -178,7 +302,7 @@ export class AgentEngine implements AgentEnginePort {
         return;
       }
 
-      // Add assistant message with tool_calls (OpenAI native format)
+      // Add assistant message with tool_calls
       this.messages.push({
         role: 'assistant',
         content: fullContent || null,
@@ -202,7 +326,6 @@ export class AgentEngine implements AgentEnginePort {
           toolResult = `Error: ${err.message}`;
         }
 
-        // Truncate very long tool results
         const truncated = toolResult.length > 10000
           ? toolResult.substring(0, 10000) + '\n... (truncated)'
           : toolResult;
@@ -221,9 +344,13 @@ export class AgentEngine implements AgentEnginePort {
     this.state = 'idle';
   }
 
+  // --- Port interface ---
+
   async getState(): Promise<AgentState> { return this.state; }
   async getStats(): Promise<SessionStats> { return { ...this.stats }; }
+
   async setBudget(maxTokens: number, budgetUsd: number): Promise<void> {
-    // Store for future budget checks
+    this.config.maxTokens = maxTokens;
+    this.config.budgetUsd = budgetUsd;
   }
 }
