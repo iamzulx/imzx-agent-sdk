@@ -1,3 +1,4 @@
+const INIT_MARKER = '##IMZX_INIT##';
 /**
  * CLI Handler — full-featured command-line interface.
  * v2.0 — Subcommands, streaming, interactive REPL, colored output.
@@ -133,7 +134,7 @@ export class CliHandler {
 
     // Banner
     console.log(`${c.bold}${c.blue}╔══════════════════════════════════════╗${c.reset}`);
-    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.3.0           ║${c.reset}`);
+    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.5.0           ║${c.reset}`);
     console.log(`${c.bold}${c.blue}╚══════════════════════════════════════╝${c.reset}`);
     console.log(`${c.dim}Persona: ${personaName} | Streaming: ${runOptions.streaming ? 'ON' : 'OFF'}${c.reset}`);
     console.log(`${c.dim}Budget: ${runOptions.budget?.maxTokens ?? '500K'} tokens, $${runOptions.budget?.budgetUsd ?? '5.00'}${c.reset}`);
@@ -182,7 +183,7 @@ export class CliHandler {
 
     let currentPersona = persona;
 
-    const initResult = await this.agentService.execute(currentPersona, '__init__');
+    const initResult = await this.agentService.execute(currentPersona, INIT_MARKER);
     rl.prompt();
 
     rl.on('line', async (line) => {
@@ -229,7 +230,7 @@ export class CliHandler {
             break;
           case '/reset':
             // Re-initialize to clear history
-            await this.agentService.execute(currentPersona, '__init__');
+            await this.agentService.execute(currentPersona, INIT_MARKER);
             console.log(`${c.yellow}Conversation history cleared.${c.reset}`);
             break;
           default:
@@ -366,7 +367,6 @@ export class CliHandler {
       } else if (arg === '--budget-usd' && args[i + 1]) {
         options['budget-usd'] = args[++i];
       } else if (arg === '--verbose' || arg === '-v') {
-        this.verbose; // already set
       } else if (!arg.startsWith('-')) {
         prompt = arg;
       }
@@ -381,7 +381,7 @@ export class CliHandler {
   }
 
   private showHelp(): void {
-    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.3.0${c.reset} — AI Agent Framework\n`);
+    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.5.0${c.reset} — AI Agent Framework\n`);
     console.log(`${c.bold}Usage:${c.reset}`);
     console.log(`  imzx run <prompt> [options]    Run agent with a prompt`);
     console.log(`  imzx chat [options]            Interactive REPL mode`);

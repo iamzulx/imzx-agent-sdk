@@ -2,103 +2,142 @@
 
 **Current Version**: v0.5.0
 **Architecture**: Rust core (NAPI-RS) + TypeScript orchestration + Clean Architecture
-**Last Updated**: 2026-06-18
+**Last Updated**: 2026-06-19
 
 ---
 
-## v0.2.0 — Security Hardening (Completed 2026-06-18)
+## v0.2.0 — Security Hardening ✅ (Completed 2026-06-18)
 
-All 15 security audit findings resolved (1 CRITICAL, 5 HIGH, 5 MEDIUM, 4 LOW).
+All 15 security audit findings resolved.
 
 ---
 
-## v0.3.0 — Agent Intelligence (Completed 2026-06-18)
+## v0.3.0 — Agent Intelligence ✅ (Completed 2026-06-18)
 
 5 new modules (hooks, subagent, streaming, context_manager, mcp_client).
-6 orchestration strategies. Real agent engine (TypeScript ReAct loop).
-CLI (7 subcommands), REST API (OpenAI-compatible), SDK (programmatic).
-CI all green (Rust fmt/clippy/test + TypeScript typecheck).
 
 ---
 
-## v0.4.0 — Real Agent (Completed 2026-06-18)
+## v0.4.0 — Real Agent ✅ (Completed 2026-06-18)
 
-Agent benar-benar fungsional — bukan stub/mock.
-
-### Phase 1 — Core Functionality
-
-- **1.1** Fix function calling format [DONE] — OpenAI native tool_calls
-- **1.2** Budget enforcement [DONE] — checkBudget() per iteration
-- **1.3** Real cost tracking [DONE] — usage from API response
-- **1.4** Conversation memory [DONE] — persist across run() calls
-- **1.5** Error recovery [DONE] — 3x exponential backoff retry
-- **1.6** Persona loading [DONE] — system prompt injection
-
-### Phase 2 — Tools Real
-
-- **2.1** Calculator (real) [DONE] — safeEval() sanitized math
-- **2.2** Web search (real) [DONE] — DuckDuckGo Lite scraping
-- **2.3** File edit tool [DONE] — edit_file(path, old, new)
-- **2.4** Tool approval [DONE] — stdin prompt for dangerous tools
-- **2.5** Rust CalculatorTool [DONE] — recursive descent parser
-- **2.6** Rust WebSearchTool [DONE] — TS layer handles real search
-- **2.7** Database tool cleanup [DONE]
-
-### Phase 3 — Advanced Features
-
-- **3.1** Multi-turn conversation [DONE] — chat REPL with history
-- **3.2** Code execution tool [DONE] — run_code(language, code)
-- **3.3** Agent state save/restore [DONE] — JSON serialization
-- **3.4** Multiple personas mid-chat [DONE] — /persona command
-- **3.5** Observability [DONE] — JSONL structured logging
-- **3.6** Streaming polish [DONE] — thinking indicator, colors
-
-### Improvements
-
-- **S1** System prompt engineering [DONE] — tool guidance prompt
-- **S2** Smart truncation [DONE] — 70% head + 20% tail
-- **S3** Context window management [DONE] — auto-compact at 80%
-- **S4** npx imzx command [DONE] — bin/imzx.mjs entry point
-- **S5** TypeScript tests [DONE] — tool-executor.test.ts
-- **S6** Better error messages [DONE] — 401/429/500 hints
-- **S7** REST API rate limiting [DONE] — 60 req/min per IP
-- **S8** API authentication [DONE] — Bearer token (optional)
-- **S9** Graceful shutdown [DONE] — double Ctrl+C handler
+Phase 1-3 complete: function calling, budget, cost, memory, retry, persona,
+10 real tools, REST API, SDK, knowledge graph, evaluator, guardrails.
 
 ---
 
-## v0.5.0 — Self-Improving Agent (Completed 2026-06-18)
+## v0.5.0 — Self-Improving Agent ✅ (Completed 2026-06-19)
 
-Based on Reflexion (Princeton/MIT), HyperAgents (Meta/Oxford 2026),
-SAGE (Peking University 2026), Mem0, Hermes Agent.
-
-- **5.1** Persistent Memory [DONE] — cross-session memory (user prefs, corrections, knowledge)
-- **5.2** Self-Reflection [DONE] — after-task evaluation, lesson extraction
-- **5.3** Skill System [DONE] — save/load/search skills, auto-extraction
-- **5.4** Self-Modification [DONE] — performance tracking, trend analysis, workflow optimization
-- **5.5** AgentBrain [DONE] — central coordinator wiring all systems into ReAct loop
+10 intelligence layers, 8 intelligence modules, all security audits fixed.
+42 commits, 40 TS files, 14 Rust files, 6 test files, CI all green.
 
 ---
 
-## v0.6.0 — Production Readiness (Future)
+## v0.6.0 — Single Command CLI (In Progress)
 
-- **6.1** Real embeddings (fastembed-rs or remote API)
-- **6.2** NAPI binary build (cross-platform .node files)
-- **6.3** npm publish
-- **6.4** Python SDK
-- **6.5** Web UI dashboard
-- **6.6** Plugin system (load tools from external file)
+**Goal**: `imzx` as a single command that works everywhere — like Claude Code, Aider, Codex.
+
+### Phase 1 — Single Command CLI
+
+- **1.1** Fix npm bin entry [TODO]
+  - `package.json` bin: `"imzx": "./bin/imzx.mjs"`
+  - Add shebang `#!/usr/bin/env node` to bin/imzx.mjs
+  - Register tsx loader for TypeScript support
+  - After `npm install -g .` → `imzx run "Hello"` works
+
+- **1.2** Flatten CLI to top-level commands [TODO]
+  - `imzx run "prompt"` — single prompt execution
+  - `imzx chat` — interactive REPL
+  - `imzx serve [--port 3000]` — REST API server
+  - `imzx config set <key> <value>` — configure settings
+  - `imzx config show` — show current config
+  - `imzx personas list` — list personas
+  - `imzx mcp connect <server>` — connect MCP server
+  - `imzx --version` / `imzx --help`
+
+- **1.3** Auto-load .env from project root [TODO]
+  - Walk up from cwd to find .env
+  - Also check ~/.imzx/.env for global config
+  - Auto-detect provider from env vars (already done in LlmProvider.fromEnv)
+
+- **1.4** Streaming UX polish [TODO]
+  - Token-by-token output (not buffered)
+  - Spinner animation while waiting
+  - Color-coded tool calls (cyan), errors (red), thinking (dim)
+  - Progress bar for multi-step tasks
+
+- **1.5** npm publish preparation [TODO]
+  - `npm publish` to npmjs.com
+  - User can `npm install -g imzx-agent-sdk` → `imzx run "Hello"`
+  - Version bump to 0.6.0
+
+### Phase 2 — Cross-Platform Binary (Future)
+
+- **2.1** Bundle with pkg/nexe for single binary
+  - Output: `imzx-linux-x64`, `imzx-linux-arm64`, `imzx-macos-arm64`, `imzx-win-x64`
+  - No Node.js dependency on target machine
+  - Install script: `curl -sSL https://imzx.dev/install.sh | sh`
+
+- **2.2** Android/Termux support
+  - ARM64 binary for Termux
+  - `pkg install imzx` or direct binary download
+  - Works with Termux storage permissions
+
+- **2.3** Auto-update mechanism
+  - `imzx update` command
+  - Check GitHub releases for new version
+  - Download and replace binary
+
+### Phase 3 — Autonomous Agent (Claude Code-class, Future)
+
+- **3.1** Git-aware agent
+  - Auto-detect git repo, read diff/branch/status
+  - Auto-commit with descriptive messages
+  - PR/MR creation from CLI
+
+- **3.2** Project context loading
+  - Auto-read CLAUDE.md, AGENTS.md, .cursorrules from project root
+  - Inject project context into system prompt
+  - Respect .gitignore patterns for file operations
+
+- **3.3** Plugin system
+  - `imzx plugin install <npm-package>`
+  - Load tools from external npm packages
+  - Plugin manifest: tools, hooks, persona presets
+
+- **3.4** MCP server mode
+  - `imzx mcp serve` — expose imzx tools as MCP server
+  - Any MCP client (Cursor, Claude Code, etc.) can use imzx tools
+  - Auto-register tools from connected MCP clients
+
+- **3.5** Multi-model orchestration
+  - `imzx run --model gpt-4o --fallback claude-sonnet`
+  - Automatic model routing based on task complexity
+  - Cost optimization: use cheap model for simple tasks
+
+---
+
+## v0.7.0 — Production Features (Future)
+
+- **7.1** Real embeddings (replace hash-based LocalEmbedder)
+- **7.2** NAPI binary build (cross-platform .node files)
+- **7.3** Python SDK pip package (`pip install imzx-agent-sdk`)
+- **7.4** Web UI dashboard
+- **7.5** OpenTelemetry integration
+- **7.6** Docker container with pre-configured MCP servers
 
 ---
 
 ## References
 
-- Reflexion (Princeton/MIT 2023): verbal self-reflection in persistent memory
-- HyperAgents (Meta/Oxford 2026): solve_task() + modify_self() self-modifying code
-- SAGE (Peking University 2026): self-evolving graph memory engine
-- Mem0 (48K stars): production-ready memory layer
-- Stanford CS329A: Self-Improving AI Agents course (2026)
-- Building Effective Agents — Anthropic Engineering (Dec 2024)
-- Effective Context Engineering — Anthropic Engineering (Sep 2025)
+- Anthropic — Building Effective Agents (Dec 2024)
+- Anthropic — Effective Context Engineering (Sep 2025)
 - Claude Agent SDK — code.claude.com/docs (Jun 2026)
-- OpenAI Function Calling — platform.openai.com/docs (2024)
+- OpenAI Function Calling — platform.openai.com/docs
+- MCP Specification — modelcontextprotocol.io
+- Mem0 — 58K stars, persistent memory (arXiv 2504.19413)
+- Reflexion — self-reflection (Princeton/MIT 2023)
+- HyperAgents — self-modifying agents (Meta/Oxford 2026)
+- SAGE — self-evolving graph memory (Peking 2026)
+- Stanford CS329A — Self-Improving AI Agents (2026)
+- OWASP Top 10 for LLM Applications (2025)
+- OWASP Top 10 for Agentic Applications (2026)

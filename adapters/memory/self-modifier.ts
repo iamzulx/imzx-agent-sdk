@@ -190,7 +190,9 @@ export class SelfModifier {
 
     if (existing.length > 0) {
       // Update existing workflow record
-      const data = JSON.parse(existing[0].content);
+      // [H4 FIX] Safe JSON parse
+      let data: any;
+      try { data = JSON.parse(existing[0].content); } catch { data = { task_type: taskType, success_sequences: [], failure_sequences: [] }; }
       if (outcome === 'success') {
         data.success_sequences.push(tools);
       } else {

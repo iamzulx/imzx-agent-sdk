@@ -35,6 +35,11 @@ const COST_RATES: Record<string, { input: number; output: number }> = {
   'anthropic/claude-opus-4': { input: 15, output: 75 },
   'openai/gpt-4o': { input: 2.5, output: 10 },
   'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'openai/gpt-4-turbo': { input: 10, output: 30 },
+  'meta-llama/Llama-3.3-70B': { input: 0.88, output: 0.88 },
+  'google/gemini-2.5-pro': { input: 1.25, output: 10 },
+  'mistralai/mistral-large': { input: 2, output: 6 },
+  'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },  // Groq
   'default': { input: 3, output: 15 },
 };
 
@@ -300,8 +305,6 @@ export class AgentEngine implements AgentEnginePort {
       let fullContent = '';
       let toolCallsAccumulated: Array<{ id: string; name: string; arguments: string }> = [];
       let currentToolCall: { id: string; name: string; arguments: string } | null = null;
-      let streamInputTokens = 0;
-      let streamOutputTokens = 0;
 
       // Stream LLM response (retry not applicable to generators — catch errors)
       try {
@@ -434,14 +437,22 @@ export class AgentEngine implements AgentEnginePort {
   }
 
   /** Restore agent state from JSON string. */
+  /** [H3 FIX] Validates state before loading — prevents deserialization attacks. */
   loadState(json: string): void {
-    const state = JSON.parse(json);
-    this.agentId = state.agentId || '';
-    this.personaPrompt = state.personaPrompt || '';
-    this.messages = state.messages || [];
-    this.stats = state.stats || { totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0, requestCount: 0 };
-    if (state.maxTokens) this.config.maxTokens = state.maxTokens;
-    if (state.budgetUsd) this.config.budgetUsd = state.budgetUsd;
+    let state: any;
+    try { state = JSON.parse(json); } catch { throw new Error('Invalid state JSON'); }
+    if (typeof state !== 'object' || state === null) throw new Error('State must be an object');
+    this.agentId = typeof state.agentId === 'string' ? state.agentId : '';
+    this.personaPrompt = typeof state.personaPrompt === 'string' ? state.personaPrompt : '';
+    this.messages = Array.isArray(state.messages) ? state.messages : [];
+    this.stats = {
+      totalInputTokens: typeof state.stats?.totalInputTokens === 'number' ? state.stats.totalInputTokens : 0,
+      totalOutputTokens: typeof state.stats?.totalOutputTokens === 'number' ? state.stats.totalOutputTokens : 0,
+      totalCostUsd: typeof state.stats?.totalCostUsd === 'number' ? state.stats.totalCostUsd : 0,
+      requestCount: typeof state.stats?.requestCount === 'number' ? state.stats.requestCount : 0,
+    };
+    if (typeof state.maxTokens === 'number' && state.maxTokens > 0 && state.maxTokens <= 10_000_000) this.config.maxTokens = state.maxTokens;
+    if (typeof state.budgetUsd === 'number' && state.budgetUsd > 0 && state.budgetUsd <= 1000) this.config.budgetUsd = state.budgetUsd;
   }
 
   /** Save state to file. */

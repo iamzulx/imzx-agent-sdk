@@ -1,11 +1,11 @@
 {
-  "name": "imzx-agent-sdk",
+  "name": "@iamzulx/imzx",
   "version": "0.3.0",
   "description": "High-performance AI Agent SDK \u2014 Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",
   "main": "interfaces/sdk/index.ts",
   "bin": {
-    "imzx": "./bin/imzx.mjs"
+    "imzx": "./bin/imzx"
   },
   "exports": {
     ".": "./interfaces/sdk/index.ts",

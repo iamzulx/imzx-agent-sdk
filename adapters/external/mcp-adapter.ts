@@ -11,7 +11,6 @@
  * - Tool execution with schema validation
  */
 
-import { z } from 'zod';
 
 // --- MCP Protocol Types ---
 
@@ -148,7 +147,8 @@ class HttpTransport implements McpTransport {
         this.connected = true;
       }
     } catch {
-      this.connected = true; // Assume connected if health endpoint doesn't exist
+      // [M2 FIX] Don't assume connected on error
+      this.connected = false;
     }
   }
 

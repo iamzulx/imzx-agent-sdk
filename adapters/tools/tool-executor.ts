@@ -226,44 +226,92 @@ function sanitizePath(p: string): string {
 // --- Safe Math Evaluator (no eval/new Function) ---
 
 function safeEval(expr: string): number {
-  // Replace named constants
-  let sanitized = expr
-    .replace(/\bPI\b/g, String(Math.PI))
-    .replace(/\bE\b/g, String(Math.E));
+  // [C1 FIX] Pure recursive descent parser — no new Function(), no eval()
+  const tokens = tokenizeExpr(expr);
+  let pos = 0;
 
-  // Replace named functions
-  const mathFuncs: Record<string, (x: number) => number> = {
-    sqrt: Math.sqrt, abs: Math.abs, round: Math.round,
-    floor: Math.floor, ceil: Math.ceil,
-    sin: Math.sin, cos: Math.cos, tan: Math.tan,
-    log: Math.log, log2: Math.log2, log10: Math.log10,
-    exp: Math.exp, atan: Math.atan, asin: Math.asin, acos: Math.acos,
-  };
+  function peek() { return tokens[pos]; }
+  function consume() { return tokens[pos++]; }
 
-  for (const [name, fn] of Object.entries(mathFuncs)) {
-    sanitized = sanitized.replace(new RegExp(`\\b${name}\\(`, 'g'), `__${name}(`);
+  function parseExpr(): number {
+    let left = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = consume();
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
   }
 
-  // Validate: only allow numbers, operators, parentheses, dots, and our prefixed functions
-  const safePattern = /^[\d\s+\-*/%().,__a-z]+$/i;
-  if (!safePattern.test(sanitized)) {
-    throw new Error(`Invalid expression: contains disallowed characters`);
+  function parseTerm(): number {
+    let left = parsePower();
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = consume();
+      const right = parsePower();
+      if (op === '*') left *= right;
+      else if (op === '/') { if (right === 0) throw new Error('Division by zero'); left /= right; }
+      else { if (right === 0) throw new Error('Modulo by zero'); left %= right; }
+    }
+    return left;
   }
 
-  // Build a safe evaluator using only Math functions
-  let evalExpr = sanitized;
-  for (const name of Object.keys(mathFuncs)) {
-    evalExpr = evalExpr.replace(new RegExp(`__${name}\\(`, 'g'), `Math.${name}(`);
+  function parsePower(): number {
+    let base = parseUnary();
+    if (peek() === '**') { consume(); base = Math.pow(base, parseUnary()); }
+    return base;
   }
 
-  // Use Function constructor in a controlled way — only Math operations
-  // eslint-disable-next-line no-new-func
-  const result = new Function(`"use strict"; return (${evalExpr})`)();
-
-  if (typeof result !== 'number' || !isFinite(result)) {
-    throw new Error(`Expression did not evaluate to a finite number`);
+  function parseUnary(): number {
+    if (peek() === '-') { consume(); return -parsePrimary(); }
+    if (peek() === '+') { consume(); }
+    return parsePrimary();
   }
+
+  function parsePrimary(): number {
+    const t = peek();
+    if (t === undefined) throw new Error('Unexpected end of expression');
+    if (t === '(') { consume(); const v = parseExpr(); if (consume() !== ')') throw new Error('Missing )'); return v; }
+    if (typeof t === 'number') { consume(); return t; }
+    // Named functions
+    const funcs: Record<string, (x: number) => number> = {
+      sqrt: Math.sqrt, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil,
+      sin: Math.sin, cos: Math.cos, tan: Math.tan, log: Math.log, exp: Math.exp,
+    };
+    if (typeof t === 'string' && funcs[t]) { consume(); if (consume() !== '(') throw new Error(`Expected ( after ${t}`); const v = parseExpr(); if (consume() !== ')') throw new Error('Missing )'); return funcs[t](v); }
+    throw new Error(`Unexpected token: ${t}`);
+  }
+
+  const result = parseExpr();
+  if (pos < tokens.length) throw new Error(`Unexpected: ${tokens[pos]}`);
+  if (!isFinite(result)) throw new Error('Result is not finite');
   return result;
+}
+
+function tokenizeExpr(expr: string): Array<number | string> {
+  const tokens: Array<number | string> = [];
+  let i = 0;
+  while (i < expr.length) {
+    if (' \t'.includes(expr[i])) { i++; continue; }
+    if ('()+-%'.includes(expr[i])) { tokens.push(expr[i]); i++; continue; }
+    if (expr[i] === '*') {
+      if (expr[i+1] === '*') { tokens.push('**'); i += 2; } else { tokens.push('*'); i++; }
+      continue;
+    }
+    if (expr[i] === '/') { tokens.push('/'); i++; continue; }
+    if (/[0-9.]/.test(expr[i])) {
+      let n = ''; while (i < expr.length && /[0-9.]/.test(expr[i])) n += expr[i++];
+      tokens.push(parseFloat(n)); continue;
+    }
+    if (/[a-zA-Z]/.test(expr[i])) {
+      let w = ''; while (i < expr.length && /[a-zA-Z]/.test(expr[i])) w += expr[i++];
+      if (w === 'PI') tokens.push(Math.PI);
+      else if (w === 'E') tokens.push(Math.E);
+      else tokens.push(w); // function name
+      continue;
+    }
+    throw new Error(`Invalid character: ${expr[i]}`);
+  }
+  return tokens;
 }
 
 // --- Web Search (DuckDuckGo Lite) ---
@@ -398,6 +446,10 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
 
     case 'run_command': {
       const command = args.command as string;
+      // [C3 FIX] Block shell metacharacters
+      if (/[;|`$()&><]/.test(command)) {
+        return 'Error: Shell metacharacters (;|`$&><) are blocked for security.';
+      }
       if (!isCommandAllowed(command)) {
         return `Error: Command not allowed. Allowed: ${ALLOWED_COMMANDS.join(', ')}`;
       }
@@ -417,21 +469,19 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     }
 
     case 'search_files': {
+      // [C2 FIX] Use execFileSync with argument array — no shell injection
       const pattern = args.pattern as string;
       const searchPath = sanitizePath((args.path as string) || '.');
       const glob = args.glob as string | undefined;
       try {
-        const grepArgs = [
-          'grep', '-rn', '--color=never',
-          '--include=' + (glob || '*'),
-          pattern, searchPath,
-        ].join(' ');
-        const output = execSync(grepArgs, {
+        const { execFileSync } = await import('node:child_process');
+        const grepArgs = ['-rn', '--color=never', '--include=' + (glob || '*'), pattern, searchPath];
+        const output = execFileSync('grep', grepArgs, {
           timeout: 15_000,
           maxBuffer: 512 * 1024,
           encoding: 'utf-8',
         });
-        return output.substring(0, 30000) || 'No matches found.';
+        return smartTruncate(output, 30000) || 'No matches found.';
       } catch (err: any) {
         if (err.status === 1) return 'No matches found.';
         return `Search error: ${err.message}`;
@@ -448,7 +498,17 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       try {
         const parsed = new URL(url);
         const hostname = parsed.hostname;
-        if (hostname === 'localhost' || hostname.startsWith('127.') || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname === '0.0.0.0') {
+        // [C4 FIX] Complete private IP blocklist (IPv4 + IPv6 + link-local)
+        const isPrivate = hostname === 'localhost' || hostname === '0.0.0.0'
+          || hostname === '::1' || hostname === '[::1]'
+          || hostname.startsWith('127.') || hostname.startsWith('10.')
+          || hostname.startsWith('192.168.') || hostname.startsWith('172.16.')
+          || hostname.startsWith('172.17.') || hostname.startsWith('172.18.')
+          || hostname.startsWith('172.19.') || hostname.startsWith('172.2')
+          || hostname.startsWith('172.30.') || hostname.startsWith('172.31.')
+          || hostname.startsWith('169.254.') || hostname.startsWith('fd')
+          || hostname.startsWith('fe80');
+        if (isPrivate) {
           return 'Error: Access to private/local addresses is blocked.';
         }
         if (parsed.protocol !== 'https:') {

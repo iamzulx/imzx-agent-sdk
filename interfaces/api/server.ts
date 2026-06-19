@@ -17,6 +17,14 @@ import type { AgentService, RunOptions } from '../../application/agent-service.j
 // --- [S7] Rate Limiter (in-memory, per IP) ---
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
+// [H6 FIX] Periodic cleanup to prevent OOM
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 60_000);
+
 function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
@@ -50,8 +58,6 @@ export interface ServerOptions {
 export async function createServer(agentService: AgentService, options: ServerOptions): Promise<void> {
   const { port, host } = options;
 
-  // Active SSE connections for streaming
-  const sseClients = new Map<string, ServerResponse>();
 
   const server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     // Parse URL early for auth/rate checks
@@ -70,7 +76,9 @@ export async function createServer(agentService: AgentService, options: ServerOp
     }
 
     // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // [H5 FIX] Configurable CORS origin
+    const allowedOrigin = process.env.IMZX_CORS_ORIGIN || '*';
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -86,7 +94,7 @@ export async function createServer(agentService: AgentService, options: ServerOp
       if (method === 'GET' && url.pathname === '/api/health') {
         return jsonResponse(res, 200, {
           status: 'ok',
-          version: '0.3.0',
+          version: "0.5.0",
           uptime: process.uptime(),
         });
       }
@@ -156,7 +164,9 @@ export async function createServer(agentService: AgentService, options: ServerOp
       if (method === 'POST' && url.pathname === '/api/chat') {
         // Chat completion endpoint — OpenAI-compatible format
         const body = await readBody(req);
-        const { messages, model, stream } = JSON.parse(body);
+        let chatParsed: any;
+        try { chatParsed = JSON.parse(body); } catch { return jsonResponse(res, 400, { error: 'Invalid JSON in request body' }); }
+        const { messages, model, stream } = chatParsed;
 
         if (!messages || !Array.isArray(messages)) {
           return jsonResponse(res, 400, { error: 'messages array is required' });
@@ -230,7 +240,9 @@ export async function createServer(agentService: AgentService, options: ServerOp
 
     } catch (err: any) {
       console.error(`[API Error] ${err.message}`);
-      return jsonResponse(res, 500, { error: err.message });
+      // [H8 FIX] Don't leak internal details
+      console.error(`[API Error] ${err.message}`);
+      return jsonResponse(res, 500, { error: 'Internal server error' });
     }
   });
 

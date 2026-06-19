@@ -174,8 +174,8 @@ export class PersistentMemory {
     return {
       total: this.store.entries.length,
       byCategory,
-      oldestEntry: dates.length ? new Date(Math.min(...dates)).toISOString() : 'none',
-      newestEntry: dates.length ? new Date(Math.max(...dates)).toISOString() : 'none',
+      oldestEntry: dates.length ? new Date(dates.reduce((a, b) => Math.min(a, b), Infinity)).toISOString() : 'none',
+      newestEntry: dates.length ? new Date(dates.reduce((a, b) => Math.max(a, b), -Infinity)).toISOString() : 'none',
     };
   }
 

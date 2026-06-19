@@ -31,7 +31,6 @@ export interface StepResult {
 
 export class WorkflowEngine {
   private workflows: Map<string, Workflow> = new Map();
-  private running: Map<string, { step: string; status: string }> = new Map();
 
   createWorkflow(name: string, steps: WorkflowStep[]): Workflow {
     const id = `wf_${Date.now()}`;
