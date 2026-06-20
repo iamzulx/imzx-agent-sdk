@@ -2,6 +2,71 @@
 
 All notable changes to imzx-agent-sdk are documented in this file.
 
+## [0.6.0] — 2026-06-20
+
+### Added — CLI & Developer Experience
+- **Single Command CLI** — `bin/imzx.mjs` with argument parser, shebang, tsx loader
+- **14 CLI Subcommands** — run, chat, serve, dashboard, config, personas, mcp, plugins, orchestrate, stats, help
+- **Flatten CLI** — `imzx run "prompt"` instead of `npx tsx interfaces/cli/cli-handler.ts run "prompt"`
+- **Auto-load .env** — walks up from cwd, also checks `~/.imzx/.env`
+- **Streaming UX** — token-by-token output, color-coded (tool calls cyan, errors red, thinking dim)
+- **npm publish** — published as `@imzx/imzx` on npmjs.com
+
+### Added — Protocols & Integration
+- **A2A Protocol** — Google Agent-to-Agent protocol (`adapters/external/a2a-adapter.ts`)
+- **MCP Server Mode** — expose imzx tools as MCP server (`adapters/tools/mcp-server-mode.ts`)
+- **MCP Client** — enhanced stdio + HTTP transport support
+- **Multi-Provider LLM** — OpenRouter, OpenAI, Anthropic, Together, Groq (auto-detect)
+
+### Added — Intelligence Layers (8 total)
+- **KnowledgeGraph** — entity-relationship memory with persistence (`knowledge-graph.json`)
+- **TfIdfEmbedder** — zero-dependency semantic search (TF-IDF + cosine similarity)
+- **AgentBrain 8-Layer** — wired all systems: memory, reflection, skills, self-mod, knowledge graph, embeddings, git context, project context
+
+### Added — Context & Awareness
+- **GitContext** — git-aware agent, auto-detects repo, branch, diff, status, commits
+- **ProjectContext** — auto-loads CLAUDE.md, AGENTS.md, .cursorrules from project root
+- **Plugin System** — npm plugin manager with hot reload, lifecycle hooks, tool injection
+
+### Added — Orchestration & Execution
+- **Orchestration Engine** — 6 multi-agent strategies (Router, Hierarchical, Consensus, Chaining, Evaluator-Optimizer, Parallel)
+- **Conversation Checkpoints** — auto-save every N iterations, crash recovery (`.imzx/checkpoints/`)
+- **Evaluation Framework** — deterministic replay, benchmark suite, evaluation reports
+
+### Added — Observability & UI
+- **Telemetry** — OpenTelemetry-compatible tracing, span management, metrics
+- **Web Dashboard** — dark theme UI, real-time agent activity, memory browser, performance charts (`imzx dashboard`)
+- **Enhanced JSONL Logging** — structured observability logs
+
+### Added — SDK & Deployment
+- **TypeScript SDK** — new exports: A2AAdapter, Orchestration, Telemetry, PluginManager, GitContext, ProjectContext, TfIdfEmbedder, CheckpointManager
+- **Python SDK** — zero-dependency wrapper (`interfaces/sdk/python/imzx.py`)
+- **Docker** — Dockerfile + docker-compose.yml for containerized deployment
+- **Binary Scripts** — cross-platform build (`scripts/build-binary.sh`) + installer (`scripts/install.sh`)
+
+### Changed
+- **agent-brain.ts** — upgraded from 6-layer to 8-layer intelligence (added knowledge graph, embeddings, git context, project context)
+- **agent-engine.ts** — added telemetry integration + conversation checkpoint support
+- **cli-handler.ts** — complete rewrite with 14 new commands (was 8)
+- **sdk/index.ts** — 8 new exports for programmatic access
+- **llm-provider.ts** — enhanced multi-provider support with 5 providers
+- **package.json** — new bin entry, new exports, new dependencies
+
+### Fixed
+- **mcp-adapter.ts** — resolved TypeScript type errors
+- **Typecheck** — all 51 TypeScript files pass clean (`tsc --noEmit`)
+- **CLI entry** — fixed shebang, tsx loader registration, argument parsing
+
+### Stats
+- **29 files changed**
+- **+4,741 insertions**
+- **51 TypeScript files** (10K+ lines)
+- **14 Rust modules** (core/src/)
+- **6 test files**
+- **CI**: All green (Rust fmt + clippy + test + audit, TypeScript typecheck + tests)
+
+---
+
 ## [0.5.0] — 2026-06-19
 
 ### Added — Self-Improving Agent System

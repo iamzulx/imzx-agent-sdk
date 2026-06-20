@@ -1,5 +1,5 @@
 {
-  "name": "@iamzulx/imzx",
+  "name": "@imzx/imzx",
   "version": "0.6.0",
   "description": "High-performance AI Agent SDK \u2014 Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",

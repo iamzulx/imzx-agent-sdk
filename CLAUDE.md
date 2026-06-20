@@ -119,8 +119,7 @@ imzx-agent-sdk/
 │   │   ├── embeddings.ts           # TF-IDF semantic search (NEW)
 │   │   ├── conversation-checkpoint.ts # Auto-save (NEW)
 │   │   ├── agent-evaluator.ts      # Evaluation framework
-│   │   ├── context-summarizer.ts   # Context compression
-│   │   └── agent-evaluator.ts      # Benchmarks + replay
+│   │   └── context-summarizer.ts   # Context compression
 │   ├── tools/
 │   │   ├── tool-executor.ts        # 10 real tools
 │   │   ├── plugin-system.ts        # Plugin manager (NEW)

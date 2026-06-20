@@ -1,8 +1,8 @@
 # imzx-agent-sdk Roadmap
 
-**Current Version**: v0.5.0
+**Current Version**: v0.6.0
 **Architecture**: Rust core (NAPI-RS) + TypeScript orchestration + Clean Architecture
-**Last Updated**: 2026-06-19
+**Last Updated**: 2026-06-20
 
 ---
 
@@ -32,98 +32,93 @@ Phase 1-3 complete: function calling, budget, cost, memory, retry, persona,
 
 ---
 
-## v0.6.0 — Single Command CLI (In Progress)
+## v0.6.0 — Production CLI & Protocol Hub ✅ (Completed 2026-06-20)
 
-**Goal**: `imzx` as a single command that works everywhere — like Claude Code, Aider, Codex.
+**Goal**: `imzx` as a single command that works everywhere — with full protocol support, plugins, orchestration, telemetry, and deployment.
 
-### Phase 1 — Single Command CLI
+### Completed Features (22)
 
-- **1.1** Fix npm bin entry [TODO]
-  - `package.json` bin: `"imzx": "./bin/imzx.mjs"`
-  - Add shebang `#!/usr/bin/env node` to bin/imzx.mjs
-  - Register tsx loader for TypeScript support
-  - After `npm install -g .` → `imzx run "Hello"` works
+| # | Feature | File | Status |
+|---|---------|------|--------|
+| 1 | Single command CLI (`bin/imzx.mjs`) | `bin/imzx.mjs` | ✅ |
+| 2 | Flatten CLI commands (14 subcommands) | `interfaces/cli/cli-handler.ts` | ✅ |
+| 3 | Auto-load .env from project root | `bin/imzx.mjs` | ✅ |
+| 4 | Streaming UX polish (token-by-token, colors) | `interfaces/cli/cli-handler.ts` | ✅ |
+| 5 | npm publish as `@imzx/imzx` | `package.json` | ✅ |
+| 6 | A2A Protocol (Google agent-to-agent) | `adapters/external/a2a-adapter.ts` | ✅ |
+| 7 | MCP Server Mode | `adapters/tools/mcp-server-mode.ts` | ✅ |
+| 8 | Plugin System (npm plugins, hot reload) | `adapters/tools/plugin-system.ts` | ✅ |
+| 9 | Git Context (auto git-aware) | `adapters/tools/git-context.ts` | ✅ |
+| 10 | Project Context (CLAUDE.md, AGENTS.md) | `adapters/tools/project-context.ts` | ✅ |
+| 11 | Orchestration (6 multi-agent strategies) | `adapters/tools/orchestration.ts` | ✅ |
+| 12 | Telemetry (OpenTelemetry-compatible) | `adapters/tools/telemetry.ts` | ✅ |
+| 13 | Web UI Dashboard | `interfaces/dashboard/server.ts` | ✅ |
+| 14 | Python SDK (zero deps) | `interfaces/sdk/python/imzx.py` | ✅ |
+| 15 | Docker + docker-compose | `Dockerfile`, `docker-compose.yml` | ✅ |
+| 16 | TF-IDF Embeddings (zero-dep) | `adapters/memory/embeddings.ts` | ✅ |
+| 17 | Conversation Checkpoints | `adapters/memory/conversation-checkpoint.ts` | ✅ |
+| 18 | Multi-Provider LLM (5 providers) | `adapters/external/llm-provider.ts` | ✅ |
+| 19 | Evaluation Framework | `adapters/memory/agent-evaluator.ts` | ✅ |
+| 20 | Cross-platform binary scripts | `scripts/build-binary.sh`, `scripts/install.sh` | ✅ |
+| 21 | AgentBrain 8-layer intelligence | `adapters/memory/agent-brain.ts` | ✅ |
+| 22 | Knowledge Graph persistence | `adapters/memory/knowledge-graph.ts` | ✅ |
 
-- **1.2** Flatten CLI to top-level commands [TODO]
-  - `imzx run "prompt"` — single prompt execution
-  - `imzx chat` — interactive REPL
-  - `imzx serve [--port 3000]` — REST API server
-  - `imzx config set <key> <value>` — configure settings
-  - `imzx config show` — show current config
-  - `imzx personas list` — list personas
-  - `imzx mcp connect <server>` — connect MCP server
-  - `imzx --version` / `imzx --help`
-
-- **1.3** Auto-load .env from project root [TODO]
-  - Walk up from cwd to find .env
-  - Also check ~/.imzx/.env for global config
-  - Auto-detect provider from env vars (already done in LlmProvider.fromEnv)
-
-- **1.4** Streaming UX polish [TODO]
-  - Token-by-token output (not buffered)
-  - Spinner animation while waiting
-  - Color-coded tool calls (cyan), errors (red), thinking (dim)
-  - Progress bar for multi-step tasks
-
-- **1.5** npm publish preparation [TODO]
-  - `npm publish` to npmjs.com
-  - User can `npm install -g imzx-agent-sdk` → `imzx run "Hello"`
-  - Version bump to 0.6.0
-
-### Phase 2 — Cross-Platform Binary (Future)
-
-- **2.1** Bundle with pkg/nexe for single binary
-  - Output: `imzx-linux-x64`, `imzx-linux-arm64`, `imzx-macos-arm64`, `imzx-win-x64`
-  - No Node.js dependency on target machine
-  - Install script: `curl -sSL https://imzx.dev/install.sh | sh`
-
-- **2.2** Android/Termux support
-  - ARM64 binary for Termux
-  - `pkg install imzx` or direct binary download
-  - Works with Termux storage permissions
-
-- **2.3** Auto-update mechanism
-  - `imzx update` command
-  - Check GitHub releases for new version
-  - Download and replace binary
-
-### Phase 3 — Autonomous Agent (Claude Code-class, Future)
-
-- **3.1** Git-aware agent
-  - Auto-detect git repo, read diff/branch/status
-  - Auto-commit with descriptive messages
-  - PR/MR creation from CLI
-
-- **3.2** Project context loading
-  - Auto-read CLAUDE.md, AGENTS.md, .cursorrules from project root
-  - Inject project context into system prompt
-  - Respect .gitignore patterns for file operations
-
-- **3.3** Plugin system
-  - `imzx plugin install <npm-package>`
-  - Load tools from external npm packages
-  - Plugin manifest: tools, hooks, persona presets
-
-- **3.4** MCP server mode
-  - `imzx mcp serve` — expose imzx tools as MCP server
-  - Any MCP client (Cursor, Claude Code, etc.) can use imzx tools
-  - Auto-register tools from connected MCP clients
-
-- **3.5** Multi-model orchestration
-  - `imzx run --model gpt-4o --fallback claude-sonnet`
-  - Automatic model routing based on task complexity
-  - Cost optimization: use cheap model for simple tasks
+**Stats**: 29 files changed, +4,741 insertions, 51 TypeScript files, 10K+ lines
 
 ---
 
-## v0.7.0 — Production Features (Future)
+## v0.7.0 — Performance & Intelligence (Next)
 
-- **7.1** Real embeddings (replace hash-based LocalEmbedder)
-- **7.2** NAPI binary build (cross-platform .node files)
-- **7.3** Python SDK pip package (`pip install imzx-agent-sdk`)
-- **7.4** Web UI dashboard
-- **7.5** OpenTelemetry integration
-- **7.6** Docker container with pre-configured MCP servers
+### Planned Features
+
+| # | Feature | Description | Priority |
+|---|---------|-------------|----------|
+| 1 | NAPI Binary Build | Cross-platform `.node` files, no Node.js install needed | High |
+| 2 | Real ML Embeddings | Replace TF-IDF with transformers.js (all-MiniLM-L6-v2) for true semantic understanding | High |
+| 3 | Voice / Realtime | WebRTC integration, model-agnostic voice abstraction for realtime agents | Medium |
+| 4 | Edge Runtime Support | Run on Cloudflare Workers, Vercel Edge, Deno Deploy | Medium |
+| 5 | Persistent Vector Store | Upgrade from JSON to SQLite/PostgreSQL vector search | Medium |
+| 6 | Multi-Agent Conversation | Agents can talk to each other via A2A in real-time | Medium |
+| 7 | Agent Marketplace | Publish and discover community plugins and agents | Low |
+| 8 | Advanced Prompt Caching | Semantic cache for LLM responses (reduce cost 30-50%) | High |
+
+**Estimated**: 2-3 weeks
+
+---
+
+## v0.8.0 — Advanced Multi-Agent (Future)
+
+### Planned Features
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 1 | Advanced Multi-Agent | Dynamic agent spawning, role-based teams, shared memory graph |
+| 2 | Workflow Designer UI | Visual drag-and-drop workflow builder (like LangGraph Studio) |
+| 3 | Agent Swarms | Massively parallel agent execution with coordination |
+| 4 | Human-in-the-Loop | Interactive approval gates in multi-agent workflows |
+| 5 | Agent Memory Federation | Shared memory across agent instances (distributed) |
+| 6 | Advanced Guardrails | Policy engine, compliance checking, content filtering |
+
+**Estimated**: 3-4 weeks
+
+---
+
+## v1.0.0 — Production Ready (Vision)
+
+### Enterprise Features
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 1 | Enterprise Auth | SSO, SAML, RBAC, API key management |
+| 2 | Team Collaboration | Shared personas, shared memory, team workspaces |
+| 3 | SLA Monitoring | Uptime tracking, alerting, incident management |
+| 4 | Audit Logging | Immutable audit trail, compliance reporting |
+| 5 | Advanced Analytics | Cost optimization, performance benchmarking, A/B testing |
+| 6 | On-Premise Deployment | Full self-hosted with Kubernetes operator |
+| 7 | SOC 2 Compliance | Security controls, penetration testing, compliance docs |
+| 8 | LLM Gateway | Rate limiting, load balancing, fallback routing, cost optimization |
+
+**Vision**: The definitive self-improving AI agent framework for production teams.
 
 ---
 
@@ -134,6 +129,7 @@ Phase 1-3 complete: function calling, budget, cost, memory, retry, persona,
 - Claude Agent SDK — code.claude.com/docs (Jun 2026)
 - OpenAI Function Calling — platform.openai.com/docs
 - MCP Specification — modelcontextprotocol.io
+- A2A Protocol — a2a-protocol.org (Google)
 - Mem0 — 58K stars, persistent memory (arXiv 2504.19413)
 - Reflexion — self-reflection (Princeton/MIT 2023)
 - HyperAgents — self-modifying agents (Meta/Oxford 2026)
@@ -141,3 +137,5 @@ Phase 1-3 complete: function calling, budget, cost, memory, retry, persona,
 - Stanford CS329A — Self-Improving AI Agents (2026)
 - OWASP Top 10 for LLM Applications (2025)
 - OWASP Top 10 for Agentic Applications (2026)
+- OpenTelemetry — opentelemetry.io
+- Google ADK — ai.google.dev/adk

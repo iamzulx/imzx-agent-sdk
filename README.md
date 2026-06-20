@@ -2,9 +2,10 @@
 
 A **self-improving** AI Agent framework — Rust core (NAPI-RS) + TypeScript orchestration with Clean Architecture.
 
+[![Version](https://img.shields.io/badge/version-0.6.0-blue)](https://github.com/iamzulx/imzx-agent-sdk)
+[![npm](https://img.shields.io/npm/v/@imzx/imzx)](https://www.npmjs.com/package/@imzx/imzx)
 [![CI](https://github.com/iamzulx/imzx-agent-sdk/actions/workflows/main.yml/badge.svg)](https://github.com/iamzulx/imzx-agent-sdk/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue)](https://github.com/iamzulx/imzx-agent-sdk)
 
 ## What Makes This Different
 
@@ -14,6 +15,10 @@ imzx is not just another agent framework — it **learns and improves over time*
 - **Self-Reflection** — evaluates its own performance after every task, extracts lessons
 - **Skill System** — auto-saves successful workflows as reusable skills
 - **Self-Modification** — tracks performance trends, optimizes tool sequences
+- **Knowledge Graph** — entity-relationship memory for structured knowledge
+- **Semantic Embeddings** — zero-dependency TF-IDF vector search
+- **Git & Project Context** — auto-aware of your codebase and git state
+- **Conversation Checkpoints** — crash recovery and deterministic replay
 
 Based on: [Reflexion](https://arxiv.org/abs/2303.11366) (Princeton/MIT), [HyperAgents](https://arxiv.org/abs/2603.19461) (Meta/Oxford 2026), [SAGE](https://arxiv.org/abs/2605.12061) (Peking University 2026)
 
@@ -22,91 +27,82 @@ Based on: [Reflexion](https://arxiv.org/abs/2303.11366) (Princeton/MIT), [HyperA
 | Category | Features |
 |----------|----------|
 | **Agent Core** | ReAct loop, OpenAI function calling, streaming, 10 real tools |
-| **Intelligence** | Persistent memory, self-reflection, skill system, self-modification |
-| **Security** | SSRF protection, command allowlist, tool approval, budget cap |
-| **Interface** | CLI (8 subcommands), REST API (OpenAI-compatible), SDK (programmatic) |
+| **Intelligence** | Persistent memory, self-reflection, skill system, self-modification, knowledge graph, embeddings |
+| **Protocols** | MCP client/server, A2A protocol (Google), multi-provider LLM |
 | **Orchestration** | 6 strategies: Router, Hierarchical, Consensus, Chaining, Evaluator-Optimizer, Parallelization |
-| **Infrastructure** | MCP client, hooks system, subagents, context engineering, observability |
+| **Context** | Git-aware agent, project context loading (CLAUDE.md, AGENTS.md) |
+| **Plugins** | npm plugin system with hot reload and lifecycle hooks |
+| **DevOps** | Docker, cross-platform scripts, CI (GitHub Actions) |
+| **Observability** | OpenTelemetry-compatible telemetry, web dashboard, JSONL logs |
+| **Interfaces** | CLI (single command), REST API (OpenAI-compatible), TypeScript SDK, Python SDK, Dashboard |
+| **Reliability** | Conversation checkpoints, deterministic replay, evaluation framework |
+| **Security** | SSRF protection, command allowlist, tool approval, budget cap, input/output guardrails |
 
 ## Quick Start
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/iamzulx/imzx-agent-sdk.git
-cd imzx-agent-sdk
-npm install --ignore-scripts
+# Install from npm
+npm install @imzx/imzx
 
-# 2. Configure API key
-cp .env.example .env
-# Edit .env → set any API key (auto-detects provider)
+# Run a single prompt
+imzx run "Hello, what can you do?"
 
-# 3. Run
-npx tsx interfaces/cli/cli-handler.ts run "What files are in this directory?"
+# Interactive chat
+imzx chat
+
+# Start REST API server
+imzx serve --port 3000
+
+# Open the dashboard
+imzx dashboard --port 3100
 ```
 
-## Usage
-
-### CLI
+Or from source:
 
 ```bash
-# Single prompt
-npx tsx interfaces/cli/cli-handler.ts run "Explain Rust ownership"
-
-# With persona and budget
-npx tsx interfaces/cli/cli-handler.ts run "Debug this code" --persona general-purpose --budget-usd 1.0
-
-# Interactive REPL (multi-turn conversation with memory)
-npx tsx interfaces/cli/cli-handler.ts chat
-
-# REST API server
-npx tsx interfaces/cli/cli-handler.ts serve --port 3000
-
-# List personas
-npx tsx interfaces/cli/cli-handler.ts personas list
+git clone https://github.com/iamzulx/imzx-agent-sdk.git
+cd imzx-agent-sdk
+npm install
+cp .env.example .env
+# Edit .env → set any API key (auto-detects provider)
+npx tsx bin/imzx.mjs run "What files are in this directory?"
 ```
 
-### REPL Commands
+## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `/stats` | Show session statistics (tokens, cost, requests) |
-| `/persona <name>` | Switch persona mid-conversation |
-| `/history` | Show conversation info |
-| `/reset` | Clear conversation history |
-| `/clear` | Clear screen |
-| `/help` | Show all commands |
-| `/exit` | Quit (or Ctrl+C twice) |
+| `imzx run "prompt"` | Execute a single prompt |
+| `imzx chat` | Interactive REPL with memory |
+| `imzx serve` | Start REST API server |
+| `imzx dashboard` | Start web UI dashboard |
+| `imzx config set <k> <v>` | Configure settings |
+| `imzx config show` | Show current config |
+| `imzx personas list` | List available personas |
+| `imzx mcp connect <server>` | Connect MCP server |
+| `imzx mcp serve` | Expose tools as MCP server |
+| `imzx plugins list` | List installed plugins |
+| `imzx orchestrate <strategy>` | Run multi-agent orchestration |
+| `imzx stats` | Show session statistics |
+| `imzx help` | Show all commands |
+| `imzx --version` | Show version |
 
-### REST API
+## SDK (Programmatic)
 
-```bash
-# Start server
-npx tsx interfaces/cli/cli-handler.ts serve --port 3000
-
-# Synchronous request
-curl -X POST http://localhost:3000/api/run \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello!", "persona": "general-purpose"}'
-
-# OpenAI-compatible streaming
-curl -X POST http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
-
-# With API authentication
-curl -X POST http://localhost:3000/api/run \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello!"}'
-
-# Health check
-curl http://localhost:3000/api/health
-```
-
-### SDK (Programmatic)
+### TypeScript
 
 ```typescript
-import { createAgent, McpClient } from './interfaces/sdk/index.js';
+import {
+  createAgent,
+  A2AAdapter,
+  Orchestration,
+  Telemetry,
+  PluginManager,
+  GitContext,
+  ProjectContext,
+  TfIdfEmbedder,
+  CheckpointManager,
+} from '@imzx/imzx';
 
 const agent = await createAgent({
   persona: 'general-purpose',
@@ -124,18 +120,59 @@ for await (const chunk of agent.stream('Explain ownership')) {
 // Stats
 const stats = await agent.stats();
 console.log(`Tokens: ${stats.totalInputTokens} in / ${stats.totalOutputTokens} out`);
+
+// A2A Protocol
+const a2a = new A2AAdapter();
+await a2a.discoverAgent('http://other-agent:8080');
+const result = await a2a.delegateTask({ prompt: 'Summarize this', agent: 'summarizer' });
+
+// Orchestration
+const orch = new Orchestration(agent);
+const result = await orch.run('Router', 'Complex multi-step task');
+
+// Telemetry
+const telemetry = new Telemetry();
+const span = telemetry.startSpan('task', { prompt: 'Analyze code' });
+// ... do work ...
+telemetry.endSpan(span, { success: true });
+
+// Plugin Manager
+const pm = new PluginManager();
+await pm.install('@imzx/plugin-git');
+pm.listPlugins();
+
+// Git Context
+const git = new GitContext(process.cwd());
+const status = await git.getStatus();
+const diff = await git.getDiff('HEAD~1');
+
+// Project Context
+const proj = new ProjectContext(process.cwd());
+await proj.load(); // reads CLAUDE.md, AGENTS.md, .cursorrules
+
+// TF-IDF Embeddings
+const embedder = new TfIdfEmbedder();
+await embedder.index(['doc1 content', 'doc2 content']);
+const results = await embedder.search('query terms');
+
+// Checkpoint Manager
+const cp = new CheckpointManager();
+await cp.save('session-1', conversationState);
+const restored = await cp.load('session-1');
 ```
 
-### MCP Client
+### Python
 
-```typescript
-import { McpClient } from './adapters/external/mcp-adapter.js';
+```python
+from imzx import ImzxClient
 
-const mcp = new McpClient();
-await mcp.addStdioServer('filesystem', 'npx', ['-y', '@modelcontextprotocol/server-filesystem', '/tmp']);
+client = ImzxClient(base_url="http://localhost:3000")
+response = client.run("What is Rust?")
+print(response.text)
 
-const tools = mcp.listTools();
-const result = await mcp.callToolAuto('read_file', { path: '/tmp/test.txt' });
+# Streaming
+for chunk in client.stream("Explain ownership"):
+    print(chunk, end="")
 ```
 
 ## Tools (10 Real Tools)
@@ -155,6 +192,8 @@ const result = await mcp.callToolAuto('read_file', { path: '/tmp/test.txt' });
 
 ## Self-Improving Architecture
 
+imzx learns and improves through **8 intelligence layers**:
+
 ```
 User sends message
   ↓
@@ -162,11 +201,31 @@ AgentBrain.processUserMessage()
   ├─ Detect preferences ("jangan pakai X" → save preference)
   ├─ Detect corrections ("salah" → save correction with high priority)
   ↓
-AgentBrain.buildEnhancedPrompt()
-  ├─ Inject persistent memory (user prefs, corrections, knowledge)
-  ├─ Inject reflections (lessons from past tasks)
-  ├─ Inject relevant skills (proven workflows)
-  ├─ Inject performance context (success rate, trend)
+AgentBrain.buildEnhancedPrompt() — 8 layers inject context:
+  │
+  ├─ Layer 1: PersistentMemory
+  │   └─ User preferences, corrections, knowledge (cross-session)
+  │
+  ├─ Layer 2: ReflectionEngine
+  │   └─ Lessons from past tasks (what worked, what failed)
+  │
+  ├─ Layer 3: SkillManager
+  │   └─ Proven workflows with steps and gotchas
+  │
+  ├─ Layer 4: SelfModifier
+  │   └─ Performance trends, optimization suggestions
+  │
+  ├─ Layer 5: KnowledgeGraph
+  │   └─ Entity-relationship structured knowledge
+  │
+  ├─ Layer 6: TfIdfEmbedder
+  │   └─ Semantic search via TF-IDF + cosine similarity
+  │
+  ├─ Layer 7: GitContext
+  │   └─ Current branch, diff, status, recent commits
+  │
+  └─ Layer 8: ProjectContext
+      └─ CLAUDE.md, AGENTS.md, .cursorrules from project root
   ↓
 ReAct Loop (think → tool call → observe → repeat)
   ├─ AgentBrain.onToolUse() — track each tool call
@@ -181,8 +240,10 @@ AgentBrain.onTaskEnd()
   ├─ SelfModifier — record performance metric, analyze trend
   ├─ SkillManager — auto-extract skill from successful multi-tool tasks
   ├─ PersistentMemory — save session summary
+  ├─ CheckpointManager — save conversation state for recovery
+  ├─ Telemetry — emit trace spans for observability
   ↓
-Next task → agent is smarter (has memory + lessons + skills)
+Next task → agent is smarter (has memory + lessons + skills + context)
 ```
 
 ## Configuration
@@ -192,18 +253,15 @@ Next task → agent is smarter (has memory + lessons + skills)
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENROUTER_API_KEY` | OpenRouter API key | — |
-| `OPENAI_API_KEY` | OpenAI API key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
+| `OPENAI_API_KEY` | OpenAI API key | — |
 | `TOGETHER_API_KEY` | Together AI API key | — |
 | `GROQ_API_KEY` | Groq API key | — |
 | `IMZX_API_KEY` | Generic API key (any provider) | — |
 | `IMZX_LLM_BASE_URL` | Custom endpoint URL | auto-detect |
 | `IMZX_MODEL` | Model name | auto-detect |
-| `ANTHROPIC_API_KEY` | Anthropic API key | — |
-| `IMZX_API_KEY` | Custom API key | — |
-| `IMZX_LLM_BASE_URL` | Custom LLM endpoint | `https://openrouter.ai/api/v1/chat/completions` |
-| `IMZX_MODEL` | Model name | `anthropic/claude-sonnet-4` |
 | `IMZX_AUTO_APPROVE` | Skip tool approval prompts | `false` |
+| `IMZX_DASHBOARD_PORT` | Dashboard port | `3100` |
 
 ### Agent Config
 
@@ -214,68 +272,143 @@ const agent = await createAgent({
 });
 ```
 
-### REST API Config
+### REST API
 
 ```bash
-# With API key protection
-IMZX_API_KEY=my-secret-key npx tsx interfaces/cli/cli-handler.ts serve --port 3000
+# Start server
+imzx serve --port 3000
 
-# Rate limiting: 60 requests/minute per IP (built-in)
+# With API key protection
+IMZX_API_KEY=my-secret-key imzx serve --port 3000
+
+# Synchronous request
+curl -X POST http://localhost:3000/api/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello!", "persona": "general-purpose"}'
+
+# OpenAI-compatible streaming
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
+
+# Health check
+curl http://localhost:3000/api/health
+```
+
+### Dashboard
+
+```bash
+imzx dashboard --port 3100
+# Opens web UI with dark theme, real-time agent activity, memory browser, performance charts
+```
+
+### Docker
+
+```bash
+docker build -t imzx-agent .
+docker run -p 3000:3000 -p 3100:3100 --env-file .env imzx-agent
+```
+
+### MCP Server Mode
+
+```bash
+# Expose imzx tools as an MCP server
+imzx mcp serve --port 8080
+
+# Any MCP client (Cursor, Claude Code, etc.) can connect and use imzx tools
 ```
 
 ## Project Structure
 
 ```
 imzx-agent-sdk/
-├── core/                          # Rust core (NAPI-RS)
+├── bin/imzx.mjs                    # CLI entry (single command)
+├── core/                           # Rust core (NAPI-RS)
 │   └── src/
-│       ├── agent.rs               # ReAct loop + hooks + context
-│       ├── tools.rs               # Tool registry + security + calculator
-│       ├── llm.rs                 # LLM provider (OpenRouter)
-│       ├── hooks.rs               # Middleware lifecycle
-│       ├── subagent.rs            # Child agent orchestration
-│       ├── streaming.rs           # SSE streaming
-│       ├── context_manager.rs     # Token budgeting
-│       ├── orchestration.rs       # 6 strategies
-│       ├── memory.rs              # Memory management
-│       └── lib.rs                 # NAPI-RS + PyO3 bindings
+│       ├── agent.rs                # ReAct loop + hooks + context
+│       ├── tools.rs                # Tool registry + security + calculator
+│       ├── llm.rs                  # LLM provider (OpenRouter)
+│       ├── hooks.rs                # Middleware lifecycle
+│       ├── subagent.rs             # Child agent orchestration
+│       ├── streaming.rs            # SSE streaming
+│       ├── context_manager.rs      # Token budgeting
+│       ├── orchestration.rs        # 6 strategies
+│       ├── memory.rs               # Memory management
+│       └── lib.rs                  # NAPI-RS + PyO3 bindings
 ├── adapters/
 │   ├── external/
-│   │   ├── agent-engine.ts        # Real ReAct loop (TypeScript)
-│   │   ├── llm-provider.ts        # OpenAI-compatible client
-│   │   ├── rust-bindings-adapter.ts  # NAPI bridge + TS fallback
-│   │   └── mcp-adapter.ts         # MCP client
+│   │   ├── agent-engine.ts         # Real ReAct loop (TypeScript)
+│   │   ├── llm-provider.ts         # Multi-provider LLM client
+│   │   ├── rust-bindings-adapter.ts # NAPI bridge + TS fallback
+│   │   ├── mcp-adapter.ts          # MCP client
+│   │   └── a2a-adapter.ts          # A2A protocol (Google)
 │   ├── memory/
-│   │   ├── agent-brain.ts         # Central intelligence coordinator
-│   │   ├── persistent-memory.ts   # Cross-session memory
-│   │   ├── reflection-engine.ts   # Self-reflection system
-│   │   ├── skill-manager.ts       # Skill save/load/search
-│   │   └── self-modifier.ts       # Performance tracking + evolution
+│   │   ├── agent-brain.ts          # Central intelligence coordinator
+│   │   ├── persistent-memory.ts    # Cross-session memory
+│   │   ├── reflection-engine.ts    # Self-reflection system
+│   │   ├── skill-manager.ts        # Skill save/load/search
+│   │   ├── self-modifier.ts        # Performance tracking + evolution
+│   │   ├── knowledge-graph.ts      # Entity-relationship memory
+│   │   ├── embeddings.ts           # TF-IDF semantic search
+│   │   ├── conversation-checkpoint.ts # Auto-save, crash recovery
+│   │   ├── agent-evaluator.ts      # Evaluation framework
+│   │   └── context-summarizer.ts   # Context compression
 │   ├── tools/
-│   │   ├── tool-executor.ts       # 10 real tool implementations
-│   │   ├── prompts.ts             # Engineered system prompts
-│   │   └── agent-logger.ts        # JSONL observability
+│   │   ├── tool-executor.ts        # 10 real tool implementations
+│   │   ├── prompts.ts              # Engineered system prompts
+│   │   ├── agent-logger.ts         # JSONL observability
+│   │   ├── plugin-system.ts        # Plugin manager
+│   │   ├── git-context.ts          # Git-aware agent
+│   │   ├── project-context.ts      # Project context loading
+│   │   ├── orchestration.ts        # Multi-agent orchestration
+│   │   ├── mcp-server-mode.ts      # MCP server
+│   │   ├── telemetry.ts            # OpenTelemetry-compatible tracing
+│   │   ├── security-guardrails.ts  # Input/output validation
+│   │   ├── workflow-engine.ts      # DAG orchestration
+│   │   ├── output-guard.ts         # Output sanitization
+│   │   └── structured-output.ts    # JSON mode
 │   └── persistence/
 │       └── file-persona-repository.ts
-├── domain/                        # Domain layer (pure types)
-│   ├── personas/                  # Persona schema + repository
-│   └── ports/                     # AgentEnginePort interface
-├── application/                   # Application layer (services)
-│   └── agent-service.ts           # Main orchestrator
+├── domain/                         # Domain layer (pure types)
+│   ├── personas/                   # Persona schema + repository
+│   └── ports/                      # AgentEnginePort interface
+├── application/                    # Application layer (services)
+│   ├── agent-service.ts            # Main orchestrator
+│   └── use-cases/
 ├── interfaces/
-│   ├── cli/cli-handler.ts         # Full CLI (8 subcommands)
-│   ├── api/server.ts              # REST API + SSE + rate limit + auth
-│   └── sdk/index.ts               # Programmatic API
-├── .imzx/                         # Agent data (auto-created)
-│   ├── memory.json                # Persistent memory store
-│   ├── skills/                    # Saved skills
-│   ├── metrics.json               # Performance metrics
-│   ├── modifications.json         # Self-modification audit log
-│   └── logs/                      # JSONL observability logs
-├── docs/architecture.md           # Architecture documentation
-├── ROADMAP.md                     # Development roadmap
-├── CLAUDE.md                      # AI assistant context
-├── LICENSE                        # MIT License
+│   ├── cli/cli-handler.ts          # Full CLI (14 subcommands)
+│   ├── api/server.ts               # REST API + SSE + rate limit + auth
+│   ├── sdk/
+│   │   ├── index.ts                # TypeScript SDK
+│   │   └── python/imzx.py          # Python SDK (zero deps)
+│   └── dashboard/
+│       └── server.ts               # Web UI dashboard
+├── scripts/
+│   ├── build-binary.sh             # Cross-platform build
+│   └── install.sh                  # One-line installer
+├── Dockerfile                      # Docker build
+├── docker-compose.yml              # Docker compose
+├── tests/                          # 6 test files
+├── docs/
+│   ├── architecture.md
+│   └── openapi.yaml
+├── .imzx/                          # Agent data (auto-created)
+│   ├── memory.json                 # Persistent memory store
+│   ├── knowledge-graph.json        # Entity-relationship graph
+│   ├── checkpoints/                # Conversation checkpoints
+│   ├── replays/                    # Deterministic replay logs
+│   ├── telemetry/                  # Telemetry spans
+│   ├── plugins/                    # Installed plugins
+│   ├── skills/                     # Saved skills
+│   ├── metrics.json                # Performance metrics
+│   ├── modifications.json          # Self-modification audit log
+│   └── logs/                       # JSONL observability logs
+├── README.md
+├── ROADMAP.md
+├── CHANGELOG.md
+├── CLAUDE.md
+├── DEVELOPMENT_PLAN.md
+├── LICENSE
 └── package.json
 ```
 
@@ -310,15 +443,49 @@ After 10 tasks: success rate 70%, trend improving
 → Agent has context about its own reliability
 ```
 
+### 5. From Knowledge Graph
+```
+User mentions "PostgreSQL" and "connection pooling" in multiple tasks
+→ KnowledgeGraph links: PostgreSQL --uses--> connection pooling
+→ Next task: agent knows project uses PostgreSQL with pooling
+```
+
+### 6. From Semantic Search
+```
+New task: "Fix database migration error"
+→ TfIdfEmbedder finds similar past tasks by semantic similarity
+→ Injects relevant memories, reflections, and skills automatically
+```
+
+### 7. From Git Context
+```
+Agent detects: uncommitted changes, branch "feature/auth", recent commits
+→ Injects git state into system prompt
+→ Agent can make contextually aware file changes and commits
+```
+
+### 8. From Project Context
+```
+Agent finds CLAUDE.md in project root: "This is a Next.js 15 project using Turbopack"
+→ Injects project conventions, tech stack, and patterns
+→ Agent follows project-specific rules automatically
+```
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Core Engine | Rust + NAPI-RS | High-performance agent loop, tool execution |
-| Orchestration | TypeScript (ESM) | Agent service, memory, reflection, skills |
-| LLM Client | fetch (native) | OpenAI-compatible API calls |
+| Orchestration | TypeScript (ESM) | Agent service, memory, reflection, skills, orchestration |
+| LLM Client | fetch (native) | OpenAI-compatible API calls, multi-provider |
 | Memory | JSON file | Persistent cross-session storage |
+| Embeddings | TF-IDF (zero-dep) | Semantic search without external dependencies |
+| Protocols | A2A, MCP | Agent-to-agent, Model Context Protocol |
 | Validation | Zod | Runtime type safety |
+| Telemetry | OpenTelemetry-compatible | Distributed tracing, metrics |
+| Dashboard | Hono + vanilla JS | Web UI for monitoring and configuration |
+| Container | Docker | Reproducible deployments |
+| Python SDK | Python 3 (zero deps) | Programmatic access from Python |
 | CI | GitHub Actions | Rust fmt/clippy/test + TypeScript typecheck |
 
 ## License
