@@ -10,9 +10,63 @@
  *   - Task type allowlist (only registered handlers accepted)
  */
 
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse, type Server, createServer as createHttpsServer } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { getAuthManager } from '../security/auth-manager.js';
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ─── HMAC Request Signing ────────────────────────────────────────────────────
+
+/**
+ * Verify HMAC-SHA256 signature on A2A requests.
+ * Signature = HMAC-SHA256(secret, method + path + body + timestamp + requestId)
+ */
+function verifyHmacSignature(
+  req: IncomingMessage,
+  body: string,
+  secret: string,
+): boolean {
+  const signature = req.headers['x-signature'] as string | undefined;
+  const timestamp = req.headers['x-timestamp'] as string | undefined;
+  const requestId = req.headers['x-request-id'] as string | undefined;
+
+  if (!signature || !timestamp || !requestId) return false;
+
+  // Reject requests older than 5 minutes (replay protection)
+  const ts = parseInt(timestamp, 10);
+  if (isNaN(ts) || Math.abs(Date.now() - ts) > 300_000) return false;
+
+  const method = req.method || 'POST';
+  const path = req.url || '/';
+  const message = `${method}${path}${body}${timestamp}${requestId}`;
+  const expected = createHmac('sha256', secret).update(message).digest('hex');
+
+  // Timing-safe comparison
+  try {
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
+export interface A2AAdapterConfig {
+  port: number;
+  agentCard: AgentCard;
+  /** Optional API key for Bearer token authentication. */
+  apiKey?: string;
+  /** HMAC signing secret for request verification. */
+  hmacSecret?: string;
+  /** Require HMAC signature (default: false). */
+  requireHmac?: boolean;
+  /** Max requests per IP per window. Default: 30. */
+  rateLimitMax?: number;
+  /** Rate limit window in ms. Default: 60000. */
+  rateLimitWindowMs?: number;
+  /** Max request body size in bytes. Default: 10MB. */
+  maxBodySize?: number;
+  /** TLS config for HTTPS. */
+  tls?: { cert: string; key: string };
+}
 
 export interface AgentSkill {
   id: string;
@@ -138,12 +192,21 @@ function checkRateLimit(ip: string, maxRequests: number, windowMs: number): bool
 
 // ── [C2 FIX] Authentication ────────────────────────────────────────────────
 
-function checkAuth(req: IncomingMessage, apiKey: string | undefined): boolean {
-  if (!apiKey) return true; // No key configured = open access (dev mode)
+function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
+  // Backward compatibility
+  if (apiKey) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return false;
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (token === apiKey) return true;
+  }
+
+  const authManager = getAuthManager();
   const authHeader = req.headers['authorization'];
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === apiKey;
+  const key = authManager.validateKey(token, 'a2a', req.socket.remoteAddress || 'unknown');
+  return key !== null;
 }
 
 // ── [C2 FIX] Input Validation ──────────────────────────────────────────────
@@ -199,6 +262,9 @@ export class A2AAdapter {
   private readonly rateLimitMax: number;
   private readonly rateLimitWindowMs: number;
   private readonly maxBodySize: number;
+  // [S4 FIX] HMAC + TLS config
+  private readonly hmacSecret: string | undefined;
+  private readonly requireHmac: boolean;
 
   constructor(config: A2AAdapterConfig) {
     this.port = config.port;
@@ -207,6 +273,8 @@ export class A2AAdapter {
     this.rateLimitMax = config.rateLimitMax ?? 30;
     this.rateLimitWindowMs = config.rateLimitWindowMs ?? 60_000;
     this.maxBodySize = config.maxBodySize ?? MAX_BODY_SIZE;
+    this.hmacSecret = config.hmacSecret;
+    this.requireHmac = config.requireHmac ?? false;
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -348,6 +416,16 @@ export class A2AAdapter {
     if (!isValidJsonRpc(body)) {
       sendJson(res, 200, jsonRpcError('n/a', -32600, 'Invalid JSON-RPC request'));
       return;
+    }
+
+    // [S4 FIX] HMAC signature verification
+    const typedBody = body as { id?: string | number | null; method?: string };
+    if (this.hmacSecret || this.requireHmac) {
+      const hmacValid = verifyHmacSignature(req, rawBody, this.hmacSecret ?? '');
+      if (this.requireHmac && !hmacValid) {
+        sendJson(res, 200, jsonRpcError(typedBody.id ?? 'n/a', -32003, 'HMAC signature required or invalid'));
+        return;
+      }
     }
 
     const task = body.params as unknown as A2ATask;

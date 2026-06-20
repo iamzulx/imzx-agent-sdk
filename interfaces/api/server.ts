@@ -11,8 +11,10 @@
  *   WS   /ws                 — WebSocket for bidirectional streaming
  */
 
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse, type Server as HttpServer, createServer as createHttpsServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import type { AgentService, RunOptions } from '../../application/agent-service.js';
+import { getAuthManager } from '../../adapters/security/auth-manager.js';
 
 // --- [S7] Rate Limiter (in-memory, per IP) ---
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -36,13 +38,23 @@ function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolea
   return entry.count <= maxRequests;
 }
 
-// --- [S8] API Authentication ---
+// --- [S8] API Authentication — Multi-Key with AuthManager ---
 function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
-  if (!apiKey) return true; // No key configured = open access
+  // Backward compatibility: single key from env
+  if (apiKey) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return false;
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (token === apiKey) return true;
+    // Also try AuthManager for scoped keys
+  }
+
+  const authManager = getAuthManager();
   const authHeader = req.headers['authorization'];
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === apiKey;
+  const key = authManager.validateKey(token, 'api', req.socket.remoteAddress || 'unknown');
+  return key !== null;
 }
 
 export interface ServerOptions {
@@ -64,8 +76,18 @@ export async function createServer(agentService: AgentService, options: ServerOp
     const url = new URL(req.url || '/', `http://${host}:${port}`);
     const method = req.method || 'GET';
 
-    // [S7] Rate limiting
+    // [S7] IP Allowlist check
     const clientIp = req.socket.remoteAddress || 'unknown';
+    const allowedIPsEnv = process.env.IMZX_ALLOWED_IPS;
+    if (allowedIPsEnv) {
+      const { checkIP } = await import('../../adapters/security/auth-manager.js');
+      const allowedIPs = allowedIPsEnv.split(',').map(s => s.trim());
+      if (!checkIP(clientIp, allowedIPs)) {
+        return jsonResponse(res, 403, { error: 'IP not allowed.' });
+      }
+    }
+
+    // [S8] Rate limiting
     if (!checkRateLimit(clientIp)) {
       return jsonResponse(res, 429, { error: 'Rate limit exceeded. Max 60 requests per minute.' });
     }

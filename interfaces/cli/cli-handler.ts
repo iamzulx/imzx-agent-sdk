@@ -17,9 +17,11 @@ import * as readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import { AgentService, type RunOptions } from '../../application/agent-service.js';
+import { getAuthManager } from '../../adapters/security/auth-manager.js';
 import { GetPersonaUseCase } from '../../application/use-cases/get-persona.js';
 import { FilePersonaRepository } from '../../adapters/persistence/file-persona-repository.js';
 import { RustBindingsAdapter } from '../../adapters/external/rust-bindings-adapter.js';
+import { AuthCommand } from './auth-command.js';
 
 // --- ANSI Colors ---
 const c = {
@@ -81,6 +83,8 @@ export class CliHandler {
         return this.handlePlugins(args.slice(1));
       case 'orchestrate':
         return this.handleOrchestrate(args.slice(1));
+      case 'auth':
+        return this.handleAuth(args.slice(1));
       case 'help':
       case '--help':
       case '-h':
@@ -483,12 +487,119 @@ export class CliHandler {
     return idx >= 0 ? args[idx + 1] : undefined;
   }
 
+
+  /**
+   * `imzx auth <subcommand>` — Manage API keys.
+   * Subcommands: generate, list, revoke, rotate, audit
+   */
+  private async handleAuth(args: string[]): Promise<void> {
+    const sub = args[0];
+    const auth = getAuthManager();
+
+    switch (sub) {
+      case 'generate': {
+        const scope = this.getArg(args, '--scope') || 'full';
+        const label = this.getArg(args, '--label') || 'cli-generated';
+        const expiresDays = parseInt(this.getArg(args, '--expires') || '0', 10);
+        const result = auth.generateKey({
+          scope: scope.includes(',') ? scope.split(',').map(s => s.trim()) : scope,
+          label,
+          expiresDays: expiresDays > 0 ? expiresDays : undefined,
+        });
+        const expires = result.key.expiresAt
+          ? ` (expires ${new Date(result.key.expiresAt).toLocaleDateString()})`
+          : '';
+        console.log(`\n${c.green}✓ API Key Generated${c.reset}`);
+        console.log(`  ID:    ${c.bold}${result.key.id}${c.reset}${expires}`);
+        console.log(`  Scope: ${c.bold}${Array.isArray(result.key.scope) ? result.key.scope.join(', ') : result.key.scope}${c.reset}`);
+        console.log(`  Label: ${c.bold}${result.key.label}${c.reset}`);
+        console.log(`  Key:   ${c.bold}${c.yellow}${result.rawKey}${c.reset}`);
+        console.log(`\n${c.yellow}⚠ Save this key now — it will never be shown again.${c.reset}\n`);
+        break;
+      }
+      case 'list': {
+        const keys = auth.listKeys();
+        if (keys.length === 0) {
+          console.log(`${c.dim}No API keys configured.${c.reset}`);
+          break;
+        }
+        console.log(`\n${c.bold}API Keys:${c.reset}`);
+        for (const k of keys) {
+          const status = k.expiresAt && new Date(k.expiresAt) < new Date()
+            ? `${c.red}expired${c.reset}`
+            : `${c.green}active${c.reset}`;
+          const expires = k.expiresAt ? ` (exp ${new Date(k.expiresAt).toLocaleDateString()})` : '';
+          console.log(`  ${c.bold}${k.id}${c.reset} — ${status} — ${k.label}${expires}`);
+          console.log(`    Scope: ${Array.isArray(k.scope) ? k.scope.join(', ') : k.scope} | Used: ${k.usageCount} | Last: ${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never'}`);
+        }
+        console.log();
+        break;
+      }
+      case 'revoke': {
+        const id = args[1];
+        if (!id) { console.error(`${c.red}Error: No key ID provided. Usage: imzx auth revoke <key-id>${c.reset}`); process.exit(1); }
+        if (auth.revokeKey(id)) {
+          console.log(`${c.green}✓ Key revoked: ${id}${c.reset}`);
+        } else {
+          console.error(`${c.red}✗ Key not found: ${id}${c.reset}`);
+          process.exit(1);
+        }
+        break;
+      }
+      case 'rotate': {
+        const results = auth.rotateAllKeys();
+        console.log(`\n${c.yellow}⚠ All keys rotated. Old keys revoked.${c.reset}\n`);
+        for (const r of results) {
+          console.log(`  ${c.bold}${r.key.id}${c.reset} — ${c.bold}${c.yellow}${r.rawKey}${c.reset}`);
+        }
+        console.log(`\n${c.yellow}⚠ Save these keys now — old keys are invalidated.${c.reset}\n`);
+        break;
+      }
+      case 'audit': {
+        auth.flushAudit();
+        const logPath = `${process.cwd()}/.imzx/logs/auth.jsonl`;
+        try {
+          const { readFileSync } = await import('node:fs');
+          const lines = readFileSync(logPath, 'utf-8').trim().split('\n').reverse().slice(0, 20);
+          console.log(`\n${c.bold}Recent Auth Events (last 20):${c.reset}`);
+          for (const line of lines) {
+            const e = JSON.parse(line);
+            const icon = e.eventType === 'auth_success' ? `${c.green}✓${c.reset}` :
+                         e.eventType === 'auth_failed' ? `${c.red}✗${c.reset}` :
+                         e.eventType === 'key_generated' ? `${c.blue}+${c.reset}` :
+                         e.eventType === 'key_revoked' ? `${c.red}-${c.reset}` :
+                         e.eventType === 'key_rotated' ? `${c.yellow}↻${c.reset}` : `${c.dim}·${c.reset}`;
+            console.log(`  ${icon} ${e.timestamp} — ${e.eventType} — ${e.endpoint} (${e.ip})${e.keyId ? ` [${e.keyId}]` : ''}${e.reason ? ` → ${e.reason}` : ''}`);
+          }
+        } catch { console.log(`${c.dim}No audit log found.${c.reset}`); }
+        break;
+      }
+      case 'help':
+      default:
+        console.log(`${c.bold}imzx auth${c.reset} — API Key Management\n`);
+        console.log(`${c.bold}Commands:${c.reset}`);
+        console.log(`  generate   Generate a new API key`);
+        console.log(`  list       List all API keys`);
+        console.log(`  revoke     Revoke a key by ID`);
+        console.log(`  rotate     Rotate all keys (revoke old, generate new)`);
+        console.log(`  audit      View auth event log\n`);
+        console.log(`${c.bold}Options:${c.reset}`);
+        console.log(`  --scope <scope>     Key scope: full, read, write, mcp, a2a (default: full)`);
+        console.log(`  --label <label>     Human-friendly label`);
+        console.log(`  --expires <days>    Key expiry in days (default: never)\n`);
+        break;
+    }
+  }
+
   private showHelp(): void {
-    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.5.0${c.reset} — AI Agent Framework\n`);
+    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.6.0${c.reset} — AI Agent Framework\n`);
     console.log(`${c.bold}Usage:${c.reset}`);
     console.log(`  imzx run <prompt> [options]    Run agent with a prompt`);
     console.log(`  imzx chat [options]            Interactive REPL mode`);
     console.log(`  imzx serve [options]           Start REST API server`);
+    console.log(`  imzx dashboard [options]       Start Web UI dashboard`);
+    console.log(`  imzx auth <command>            Manage API keys`);
+    console.log(`  imxmcp connect <server>        Connect MCP server`);
     console.log(`  imzx personas list             List available personas`);
     console.log(`  imzx stats                     Show session statistics`);
     console.log(`  imzx help                      Show this help\n`);

@@ -15,9 +15,10 @@
  * [C4 FIX] Content Security Policy with nonce, X-Content-Type-Options, X-Frame-Options headers
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse, createServer as createHttpsServer } from 'node:http';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { getAuthManager } from '../../adapters/security/auth-manager.js';
 import { randomBytes } from 'node:crypto';
 
 // ── Config ────────────────────────────────────────────────────────────────
@@ -50,12 +51,21 @@ function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolea
 }
 
 // ── [C1 FIX] API Authentication ─────────────────────────────────────────
-function checkAuth(req: IncomingMessage): boolean {
-  if (!API_KEY) return true; // No key configured = open access (backward compat)
+function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
+  // Backward compatibility
+  if (apiKey) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return false;
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (token === apiKey) return true;
+  }
+
+  const authManager = getAuthManager();
   const authHeader = req.headers['authorization'];
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === API_KEY;
+  const key = authManager.validateKey(token, 'dashboard', req.socket.remoteAddress || 'unknown');
+  return key !== null;
 }
 
 // ── [C4 FIX] HTML Escaping ──────────────────────────────────────────────
