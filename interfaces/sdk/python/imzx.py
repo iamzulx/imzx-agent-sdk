@@ -25,16 +25,18 @@ Usage:
     stats = agent.stats()
     print(stats)
 
-    # Auto-start server if not running
-    agent = ImzxAgent(auto_start=True)  # starts imzx serve on localhost:3000
+    # Auto-start server if not running (requires api_key)
+    agent = ImzxAgent(api_key="wn_...", auto_start=True)  # starts imzx serve on localhost:3000
 """
 
 import json
 import urllib.request
 import urllib.error
 import subprocess
+import atexit
 import time
 import asyncio
+import os
 from typing import Any, Iterator, Optional
 
 
@@ -43,8 +45,8 @@ class ImzxAgent:
 
     Args:
         base_url: REST API base URL (default: http://localhost:3000)
-        api_key: Optional API key for authentication
-        auto_start: If True, auto-start imzx serve if not reachable
+        api_key: Optional API key for authentication (required when auto_start=True)
+        auto_start: If True, auto-start imzx serve if not reachable (requires api_key, binds to 127.0.0.1)
         timeout: HTTP request timeout in seconds (default: 120)
     """
 
@@ -60,8 +62,14 @@ class ImzxAgent:
         self.timeout = timeout
         self._server_process: Optional[subprocess.Popen] = None
 
-        if auto_start and not self._is_server_running():
-            self._start_server()
+        if auto_start:
+            if not api_key:
+                raise ValueError(
+                    "api_key is required when auto_start=True. "
+                    "Pass a valid API key to start the server securely."
+                )
+            if not self._is_server_running():
+                self._start_server()
 
     def _is_server_running(self) -> bool:
         """Check if the imzx server is reachable."""
@@ -72,18 +80,52 @@ class ImzxAgent:
             return False
 
     def _start_server(self, port: int = 3000) -> None:
-        """Start imzx serve in the background."""
+        """Start imzx serve in the background.
+
+        Always binds to 127.0.0.1 (localhost) and passes IMZX_API_KEY
+        via environment variable so the server requires authentication.
+        """
+        env = os.environ.copy()
+        env["IMZX_API_KEY"] = self.api_key  # type: ignore[assignment]
+
         self._server_process = subprocess.Popen(
-            ["npx", "tsx", "interfaces/cli/cli-handler.ts", "serve", "--port", str(port)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            [
+                "npx",
+                "tsx",
+                "interfaces/cli/cli-handler.ts",
+                "serve",
+                "--port",
+                str(port),
+                "--host",
+                "127.0.0.1",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
+
+        # Register cleanup so the subprocess is killed if the Python process exits
+        atexit.register(self._cleanup_server)
+
         # Wait for server to be ready
         for _ in range(30):
             time.sleep(1)
             if self._is_server_running():
                 return
         raise RuntimeError("Server failed to start within 30 seconds")
+
+    def _cleanup_server(self) -> None:
+        """Terminate the subprocess and wait for it to exit."""
+        if self._server_process is not None:
+            try:
+                self._server_process.terminate()
+                self._server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._server_process.kill()
+                self._server_process.wait(timeout=5)
+            except OSError:
+                pass  # Process already exited
+            finally:
+                self._server_process = None
 
     def _request(self, method: str, path: str, body: Optional[dict] = None) -> Any:
         """Make an HTTP request to the REST API."""
@@ -204,9 +246,8 @@ class ImzxAgent:
 
     def close(self) -> None:
         """Stop the auto-started server (if any)."""
-        if self._server_process:
-            self._server_process.terminate()
-            self._server_process = None
+        if self._server_process is not None:
+            self._cleanup_server()
 
     def __enter__(self):
         return self

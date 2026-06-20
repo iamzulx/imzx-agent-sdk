@@ -121,10 +121,27 @@ for await (const chunk of agent.stream('Explain ownership')) {
 const stats = await agent.stats();
 console.log(`Tokens: ${stats.totalInputTokens} in / ${stats.totalOutputTokens} out`);
 
-// A2A Protocol
-const a2a = new A2AAdapter();
-await a2a.discoverAgent('http://other-agent:8080');
-const result = await a2a.delegateTask({ prompt: 'Summarize this', agent: 'summarizer' });
+// A2A Protocol (start a local A2A agent endpoint)
+const a2a = new A2AAdapter({
+  port: 8080,
+  agentCard: {
+    name: 'my-agent',
+    description: 'An AI agent',
+    url: 'http://localhost:8080',
+    version: '1.0.0',
+    capabilities: { streaming: true, pushNotifications: false },
+    skills: [{ id: 'summarize', name: 'Summarize', description: 'Summarize content' }],
+  },
+  apiKey: process.env.A2A_API_KEY, // [C2 FIX] Optional auth
+});
+// Discover remote agents
+const cards = await a2a.discoverAgents('http://other-agent:8080');
+// Send a task to a remote agent
+const result = await a2a.sendTask('http://other-agent:8080', {
+  id: 'task-1',
+  type: 'summarize',
+  input: { text: 'Summarize this' },
+});
 
 // Orchestration
 const orch = new Orchestration(agent);

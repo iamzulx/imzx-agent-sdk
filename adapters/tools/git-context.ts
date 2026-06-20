@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
@@ -35,16 +35,16 @@ export class GitContext {
 
   private detectGitDir(): boolean {
     try {
-      this.exec('git rev-parse --is-inside-work-tree');
+      this.exec(['rev-parse', '--is-inside-work-tree']);
       return true;
     } catch {
       return false;
     }
   }
 
-  private exec(cmd: string): string {
+  private exec(args: string[]): string {
     try {
-      return execSync(`git --no-pager ${cmd}`, {
+      return execFileSync('git', ['--no-pager', ...args], {
         cwd: this.repoPath,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -55,9 +55,9 @@ export class GitContext {
     }
   }
 
-  private safeExec(cmd: string, fallback: string = ''): string {
+  private safeExec(args: string[], fallback: string = ''): string {
     try {
-      return this.exec(cmd);
+      return this.exec(args);
     } catch {
       return fallback;
     }
@@ -72,12 +72,12 @@ export class GitContext {
       return { branch: '', ahead: 0, behind: 0, modified: [], staged: [], untracked: [] };
     }
 
-    const branch = this.safeExec('rev-parse --abbrev-ref HEAD');
+    const branch = this.safeExec(['rev-parse', '--abbrev-ref', 'HEAD']);
 
     let ahead = 0;
     let behind = 0;
     try {
-      const tracking = this.safeExec('rev-list --left-right --count HEAD...@{u}');
+      const tracking = this.safeExec(['rev-list', '--left-right', '--count', 'HEAD...@{u}']);
       if (tracking) {
         const parts = tracking.split(/\s+/);
         ahead = parseInt(parts[0] ?? '0', 10) || 0;
@@ -85,7 +85,7 @@ export class GitContext {
       }
     } catch { /* no upstream */ }
 
-    const statusRaw = this.safeExec('status --porcelain=v1');
+    const statusRaw = this.safeExec(['status', '--porcelain=v1']);
     const modified: string[] = [];
     const staged: string[] = [];
     const untracked: string[] = [];
@@ -112,12 +112,12 @@ export class GitContext {
 
   getDiff(staged: boolean = false): string {
     if (!this.isGit) return '';
-    return this.safeExec(staged ? 'diff --cached' : 'diff');
+    return this.safeExec(staged ? ['diff', '--cached'] : ['diff']);
   }
 
   getLog(count: number = 10): GitCommit[] {
     if (!this.isGit) return [];
-    const raw = this.safeExec(`log -${count} --format=%H|%an|%aI|%s`);
+    const raw = this.safeExec(['log', `-${count}`, '--format=%H|%an|%aI|%s']);
     if (!raw) return [];
     return raw.split('\n').filter(Boolean).map((line) => {
       const [hash, author, date, ...msgParts] = line.split('|');
@@ -129,8 +129,8 @@ export class GitContext {
     if (!this.isGit) {
       return { current: '', local: [], remote: [] };
     }
-    const current = this.safeExec('rev-parse --abbrev-ref HEAD');
-    const all = this.safeExec('branch -a --format=%(refname:short)');
+    const current = this.safeExec(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const all = this.safeExec(['branch', '-a', '--format=%(refname:short)']);
     const local: string[] = [];
     const remote: string[] = [];
     for (const b of all.split('\n').filter(Boolean)) {
@@ -146,21 +146,21 @@ export class GitContext {
   async commit(message: string, files?: string[]): Promise<{ hash: string; message: string }> {
     if (!this.isGit) throw new Error('Not a git repository');
     if (files?.length) {
-      this.exec(`add ${files.map((f) => `"${f}"`).join(' ')}`);
+      this.exec(['add', '--', ...files]);
     }
-    this.exec(`commit -m "${message.replace(/"/g, '\\"')}"`);
-    const hash = this.exec('rev-parse HEAD');
+    this.exec(['commit', '-m', message]);
+    const hash = this.exec(['rev-parse', 'HEAD']);
     return { hash, message };
   }
 
   async createBranch(name: string): Promise<void> {
     if (!this.isGit) throw new Error('Not a git repository');
-    this.exec(`checkout -b "${name.replace(/"/g, '\\"')}"`);
+    this.exec(['checkout', '-b', '--', name]);
   }
 
   getLastCommit(): { hash: string; message: string; date: string } {
     if (!this.isGit) return { hash: '', message: '', date: '' };
-    const raw = this.safeExec('log -1 --format=%H|%s|%aI');
+    const raw = this.safeExec(['log', '-1', '--format=%H|%s|%aI']);
     if (!raw) return { hash: '', message: '', date: '' };
     const [hash, message, date] = raw.split('|');
     return { hash: hash!, message: message!, date: date! };

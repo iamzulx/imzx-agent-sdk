@@ -4,7 +4,7 @@
  * Based on: Claude Code git awareness, Aider git integration (2026).
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -34,14 +34,21 @@ export class GitTools {
     this.cwd = cwd || process.cwd();
   }
 
-  private exec(cmd: string): string {
+  private exec(args: string[]): string {
     try {
-      return execSync(cmd, { cwd: this.cwd, encoding: 'utf-8', timeout: 15000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();
-    } catch { return ''; }
+      return execFileSync('git', args, {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        timeout: 15000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      }).trim();
+    } catch {
+      return '';
+    }
   }
 
   isGitRepo(): boolean {
-    return this.exec('git rev-parse --is-inside-work-tree') === 'true';
+    return this.exec(['rev-parse', '--is-inside-work-tree']) === 'true';
   }
 
   getStatus(): GitStatus {
@@ -49,9 +56,9 @@ export class GitTools {
       return { isRepo: false, branch: '', remote: '', staged: [], modified: [], untracked: [], ahead: 0, behind: 0, lastCommit: null };
     }
 
-    const branch = this.exec('git branch --show-current');
-    const remote = this.exec('git remote get-url origin 2>/dev/null');
-    const statusRaw = this.exec('git status --porcelain');
+    const branch = this.exec(['branch', '--show-current']);
+    const remote = this.exec(['remote', 'get-url', 'origin']);
+    const statusRaw = this.exec(['status', '--porcelain']);
     const staged: string[] = [];
     const modified: string[] = [];
     const untracked: string[] = [];
@@ -65,36 +72,36 @@ export class GitTools {
     }
 
     let ahead = 0, behind = 0;
-    const tracking = this.exec('git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null');
+    const tracking = this.exec(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
     if (tracking) {
       const [a, b] = tracking.split('\t').map(Number);
       ahead = a; behind = b;
     }
 
-    const lastHash = this.exec('git log -1 --format=%H');
-    const lastMsg = this.exec('git log -1 --format=%s');
-    const lastDate = this.exec('git log -1 --format=%ci');
+    const lastHash = this.exec(['log', '-1', '--format=%H']);
+    const lastMsg = this.exec(['log', '-1', '--format=%s']);
+    const lastDate = this.exec(['log', '-1', '--format=%ci']);
     const lastCommit = lastHash ? { hash: lastHash.substring(0, 8), message: lastMsg, date: lastDate } : null;
 
     return { isRepo: true, branch, remote, staged, modified, untracked, ahead, behind, lastCommit };
   }
 
   getDiff(staged: boolean = true): GitDiff {
-    const flag = staged ? '--cached' : '';
-    const diff = this.exec(`git diff ${flag} --stat`);
-    const patch = this.exec(`git diff ${flag} --no-color`).substring(0, 50000);
-    const files = this.exec(`git diff ${flag} --name-only`).split('\n').filter(f => f.trim());
+    const args = staged ? ['--cached'] : [];
+    const diff = this.exec(['diff', ...args, '--stat']);
+    const patch = this.exec(['diff', ...args, '--no-color']).substring(0, 50000);
+    const files = this.exec(['diff', ...args, '--name-only']).split('\n').filter(f => f.trim());
     const insertions = (diff.match(/\d+(?= insertion)/) || ['0']).map(Number)[0];
     const deletions = (diff.match(/\d+(?= deletion)/) || ['0']).map(Number)[0];
     return { files, insertions, deletions, patch };
   }
 
   getLog(count: number = 10): string {
-    return this.exec(`git log --oneline -${count}`);
+    return this.exec(['log', '--oneline', `-${count}`]);
   }
 
   blame(file: string): string {
-    return this.exec(`git blame --porcelain "${file}" 2>/dev/null`).substring(0, 30000);
+    return this.exec(['blame', '--porcelain', '--', file]).substring(0, 30000);
   }
 
   getProjectContext(): string {
