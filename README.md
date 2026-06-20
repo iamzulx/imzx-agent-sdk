@@ -277,8 +277,13 @@ Next task → agent is smarter (has memory + lessons + skills + context)
 | `IMZX_API_KEY` | Generic API key (any provider) | — |
 | `IMZX_LLM_BASE_URL` | Custom endpoint URL | auto-detect |
 | `IMZX_MODEL` | Model name | auto-detect |
-| `IMZX_AUTO_APPROVE` | Skip tool approval prompts | `false` |
-| `IMZX_DASHBOARD_PORT` | Dashboard port | `3100` |
+| `IMZX_AUTO_APPROVE` | Skip tool approval | false |
+| `IMZX_DASHBOARD_PORT` | Dashboard port | 3100 |
+| `IMZX_API_KEY` | Master API key (single-key mode) | — |
+| `IMZX_ALLOWED_IPS` | Comma-separated IP allowlist | allow all |
+| `IMZX_HMAC_SECRET` | HMAC signing secret for A2A | — |
+| `IMZX_TLS_CERT` | TLS certificate path | — |
+| `IMZX_TLS_KEY` | TLS private key path | — |
 
 ### Agent Config
 

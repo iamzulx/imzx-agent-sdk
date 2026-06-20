@@ -2,6 +2,29 @@
 
 All notable changes to imzx-agent-sdk are documented in this file.
 
+## [0.6.1] — 2026-06-20
+
+### Added — Auth System & Security Enhancements
+- **Multi-Key Auth Manager** — `adapters/security/auth-manager.ts` (430 lines)
+  - Scoped API keys (full, read, write, mcp, a2a) stored as SHA-256 hashes only
+  - Key generation with expiry support, usage tracking, rotation
+  - Raw key returned ONCE at generation — never stored or retrievable
+- **Auth Event Audit Log** — `.imzx/logs/auth.jsonl` (append-only JSONL)
+  - Tracks: auth_success, auth_failed, key_generated, key_revoked, key_rotated, rate_limited
+  - Auto-flush after 10 events or 30 seconds
+- **IP Allowlist** — CIDR notation support (192.168.1.0/24), exact match (127.0.0.1)
+  - `IMZX_ALLOWED_IPS` env var, wired to REST API, Dashboard, A2A
+- **HMAC Request Signing** — HMAC-SHA256 for A2A protocol
+  - Replay protection (5-min timestamp window), timing-safe comparison
+  - Optional (requireHmac flag), configurable secret
+- **CLI Key Management** — `imzx auth` subcommand
+  - `imzx auth generate --scope full --label admin --expires 30d`
+  - `imzx auth list` — list all keys (hashed)
+  - `imzx auth revoke <key-id>` — revoke specific key
+  - `imzx auth rotate` — revoke all, generate new per scope
+  - `imzx auth audit` — view recent auth events
+- **HTTPS Support** — TLS config ready for all servers (REST API, Dashboard, A2A)
+
 ## [0.6.0] — 2026-06-20
 
 ### Added — CLI & Developer Experience

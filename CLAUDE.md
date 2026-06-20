@@ -135,6 +135,8 @@ imzx-agent-sdk/
 │   │   └── prompts.ts              # System prompts
 │   └── persistence/
 │       └── file-persona-repository.ts
+│   └── security/
+│       └── auth-manager.ts          # Multi-key auth, audit, IP allowlist
 ├── domain/
 │   ├── personas/                   # Persona schema
 │   └── ports/                      # AgentEnginePort interface
