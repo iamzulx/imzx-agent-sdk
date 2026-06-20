@@ -21,7 +21,16 @@
     "./git-context": "./adapters/tools/git-context.ts",
     "./project-context": "./adapters/tools/project-context.ts",
     "./embeddings": "./adapters/memory/embeddings.ts",
-    "./checkpoint": "./adapters/memory/conversation-checkpoint.ts"
+    "./checkpoint": "./adapters/memory/conversation-checkpoint.ts",
+    "./hitl": "./adapters/tools/hitl-manager.ts",
+    "./judge": "./adapters/tools/llm-judge.ts",
+    "./cost": "./adapters/tools/cost-planner.ts",
+    "./policy": "./adapters/security/policy-engine.ts",
+    "./topology": "./adapters/tools/topology.ts",
+    "./lifecycle": "./adapters/tools/agent-lifecycle.ts",
+    "./slm": "./adapters/tools/slm-router.ts",
+    "./cua": "./adapters/tools/cua-browser.ts",
+    "./rag": "./adapters/tools/rag-pipeline.ts"
   },
   "scripts": {
     "start": "tsx interfaces/cli/cli-handler.ts run",

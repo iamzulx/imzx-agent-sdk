@@ -30,6 +30,24 @@ import { RustBindingsAdapter } from '../../adapters/external/rust-bindings-adapt
 import type { StreamChunk, SessionStats, HookEventType, HookEvent } from '../../domain/ports/agent-engine.js';
 
 export { McpClient } from '../../adapters/external/mcp-adapter.js';
+export { HitlManager, getHitlManager } from '../../adapters/tools/hitl-manager.js';
+export type { ApprovalRequest, RiskLevel, ApprovalStatus, HitlRule } from '../../adapters/tools/hitl-manager.js';
+export { LlmJudge, getLlmJudge, RUBRICS } from '../../adapters/tools/llm-judge.js';
+export type { EvaluationRubric, EvaluationResult, CriterionScore } from '../../adapters/tools/llm-judge.js';
+export { CostEstimator, getCostEstimator } from '../../adapters/tools/cost-planner.js';
+export type { ModelPricing, TaskCostEstimate, ModelComparison } from '../../adapters/tools/cost-planner.js';
+export { PolicyEngine, getPolicyEngine } from '../../adapters/security/policy-engine.js';
+export type { Policy, PolicyContext, PolicyDecision } from '../../adapters/security/policy-engine.js';
+export { ChainTopology, StarTopology, MeshTopology, createTopology } from '../../adapters/tools/topology.js';
+export type { Agent, TopologyResult, TopologyType } from '../../adapters/tools/topology.js';
+export { AgentLifecycleManager } from '../../adapters/tools/agent-lifecycle.js';
+export type { AgentState, LifecycleEvent, HealthStatus } from '../../adapters/tools/agent-lifecycle.js';
+export { SlmRouter, getSlmRouter, SLM_CATALOG } from '../../adapters/tools/slm-router.js';
+export type { SLMConfig, TaskCategory } from '../../adapters/tools/slm-router.js';
+export { CuaBrowser, getCuaToolDefinitions } from '../../adapters/tools/cua-browser.js';
+export type { BrowserConfig, PageContent, ScreenshotResult } from '../../adapters/tools/cua-browser.js';
+export { RAGPipeline, getRAGPipeline } from '../../adapters/tools/rag-pipeline.js';
+export type { Document as RAGDocument, RetrievalResult, RAGConfig } from '../../adapters/tools/rag-pipeline.js';
 export type { StreamChunk, SessionStats, HookEvent };
 
 // New module exports (v0.6.0)
