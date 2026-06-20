@@ -30,6 +30,8 @@ import { RustBindingsAdapter } from '../../adapters/external/rust-bindings-adapt
 import type { StreamChunk, SessionStats, HookEventType, HookEvent } from '../../domain/ports/agent-engine.js';
 
 export { McpClient } from '../../adapters/external/mcp-adapter.js';
+export { AuthManager, getAuthManager } from '../../adapters/security/auth-manager.js';
+export type { StoredKey, AuthEvent, KeyGenerationResult, KeyScope } from '../../adapters/security/auth-manager.js';
 export { HitlManager, getHitlManager } from '../../adapters/tools/hitl-manager.js';
 export type { ApprovalRequest, RiskLevel, ApprovalStatus, HitlRule } from '../../adapters/tools/hitl-manager.js';
 export { LlmJudge, getLlmJudge, RUBRICS } from '../../adapters/tools/llm-judge.js';

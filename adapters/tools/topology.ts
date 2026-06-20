@@ -5,14 +5,12 @@
  *           "Topology Patterns (Chain/Star/Mesh)" academic literature.
  */
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+import type { Agent } from './orchestration.js';
 
-export interface Agent {
-  id: string;
-  name: string;
-  capabilities: string[];
-  execute: (task: string, context?: Record<string, unknown>) => Promise<string>;
-}
+// Re-export for consumers
+export type { Agent };
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface TopologyResult {
   output: string;
