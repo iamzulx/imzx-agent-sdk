@@ -1,0 +1,14 @@
+# Build artifacts
+target/
+dist/
+
+# Dev
+node_modules/
+.npmignore
+.gitignore
+.github/
+.imzx/
+
+# OS
+.DS_Store
+Thumbs.db

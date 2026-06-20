@@ -53,5 +53,26 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/iamzulx/imzx-agent-sdk.git"
-  }
+  },
+  "peerDependencies": {
+    "tsx": ">=4.0.0"
+  },
+  "files": [
+    "adapters/**/*.ts",
+    "application/**/*.ts",
+    "bin/imzx.mjs",
+    "core/**/*.rs",
+    "core/**/*.toml",
+    "core/Cargo.lock",
+    "docs/**/*.md",
+    "docs/**/*.yaml",
+    "domain/**/*.ts",
+    "domain/**/*.json",
+    "interfaces/**/*.ts",
+    "interfaces/**/*.py",
+    "scripts/**/*.sh",
+    "tests/**/*.ts",
+    "*.md",
+    "LICENSE"
+  ]
 }
