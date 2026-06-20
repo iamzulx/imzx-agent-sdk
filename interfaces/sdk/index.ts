@@ -32,6 +32,25 @@ import type { StreamChunk, SessionStats, HookEventType, HookEvent } from '../../
 export { McpClient } from '../../adapters/external/mcp-adapter.js';
 export type { StreamChunk, SessionStats, HookEvent };
 
+// New module exports (v0.6.0)
+export { A2AAdapter } from '../../adapters/external/a2a-adapter.js';
+export { TelemetryCollector } from '../../adapters/tools/telemetry.js';
+export { PluginManager } from '../../adapters/tools/plugin-system.js';
+export { GitContext } from '../../adapters/tools/git-context.js';
+export { ProjectContext } from '../../adapters/tools/project-context.js';
+export { TfIdfEmbedder } from '../../adapters/memory/embeddings.js';
+export { CheckpointManager } from '../../adapters/memory/conversation-checkpoint.js';
+export {
+  Orchestrator,
+  RouterStrategy,
+  HierarchicalStrategy,
+  ConsensusStrategy,
+  ChainingStrategy,
+  EvaluatorOptimizerStrategy,
+  ParallelizationStrategy,
+} from '../../adapters/tools/orchestration.js';
+export type { OrchestrationStrategy } from '../../adapters/tools/orchestration.js';
+
 export interface AgentConfig {
   /** Path to persona directory. Default: ./domain/personas */
   personaDir?: string;

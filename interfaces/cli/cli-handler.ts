@@ -75,6 +75,12 @@ export class CliHandler {
         return this.handleStats();
       case 'mcp':
         return this.handleMcp(args.slice(1));
+      case 'dashboard':
+        return this.handleDashboard(args.slice(1));
+      case 'plugins':
+        return this.handlePlugins(args.slice(1));
+      case 'orchestrate':
+        return this.handleOrchestrate(args.slice(1));
       case 'help':
       case '--help':
       case '-h':
@@ -140,9 +146,24 @@ export class CliHandler {
     console.log(`${c.dim}Budget: ${runOptions.budget?.maxTokens ?? '500K'} tokens, $${runOptions.budget?.budgetUsd ?? '5.00'}${c.reset}`);
     console.log('');
 
+    // Auto-inject git + project context into system prompt
+    let contextPrompt = prompt;
+    try {
+      const { GitContext } = await import('../../adapters/tools/git-context.js');
+      const git = new GitContext();
+      if (git.isGitRepo()) {
+        contextPrompt = contextPrompt + '\n\n' + git.formatForPrompt();
+      }
+    } catch { /* optional */ }
+    try {
+      const { ProjectContext } = await import('../../adapters/tools/project-context.js');
+      const project = new ProjectContext();
+      contextPrompt = contextPrompt + '\n\n' + project.formatForPrompt();
+    } catch { /* optional */ }
+
     try {
       const startTime = Date.now();
-      const response = await this.agentService.execute(personaName, prompt, runOptions);
+      const response = await this.agentService.execute(personaName, contextPrompt, runOptions);
       const elapsed = Date.now() - startTime;
 
       // If not streaming, print the full response
@@ -184,6 +205,18 @@ export class CliHandler {
     let currentPersona = persona;
 
     const initResult = await this.agentService.execute(currentPersona, INIT_MARKER);
+
+    // Auto-inject git + project context
+    try {
+      const { GitContext } = await import('../../adapters/tools/git-context.js');
+      const { ProjectContext } = await import('../../adapters/tools/project-context.js');
+      const git = new GitContext();
+      const project = new ProjectContext();
+      if (git.isGitRepo()) {
+        console.log(`${c.dim}Git context: ${git.getStatus().branch}${c.reset}`);
+      }
+    } catch { /* optional */ }
+
     rl.prompt();
 
     rl.on('line', async (line) => {
@@ -345,6 +378,76 @@ export class CliHandler {
   private async handleMcp(args: string[]): Promise<void> {
     console.log(`${c.yellow}MCP client is available via the McpClient adapter.${c.reset}`);
     console.log(`${c.dim}Use: import { McpClient } from './adapters/external/mcp-adapter.js'${c.reset}`);
+  }
+
+  /**
+   * `imzx dashboard [--port <port>]` — start web dashboard.
+   */
+  private async handleDashboard(args: string[]): Promise<void> {
+    const port = this.getArg(args, '--port') || '3100';
+    console.log(`${c.bold}${c.blue}Starting dashboard on port ${port}...${c.reset}`);
+    try {
+      await import('../dashboard/server.js');
+      console.log(`${c.green}✓ Dashboard started${c.reset}`);
+    } catch (err: any) {
+      console.error(`${c.red}Failed to start dashboard: ${err.message}${c.reset}`);
+    }
+  }
+
+  /**
+   * `imzx plugins list|install <name>` — manage plugins.
+   */
+  private async handlePlugins(args: string[]): Promise<void> {
+    const subcommand = args[0];
+    try {
+      const { PluginManager } = await import('../../adapters/tools/plugin-system.js');
+      const pm = new PluginManager();
+
+      if (subcommand === 'list' || !subcommand) {
+        const plugins = pm.listPlugins();
+        console.log(`${c.bold}Plugins:${c.reset}`);
+        if (plugins.length === 0) {
+          console.log(`${c.dim}  No plugins installed.${c.reset}`);
+        } else {
+          for (const p of plugins) {
+            console.log(`  ${c.green}${p.name}${c.reset} v${p.version} — ${p.description} [${p.status}]`);
+          }
+        }
+      } else if (subcommand === 'install' && args[1]) {
+        const plugin = await pm.loadPlugin(args[1]!);
+        console.log(`${c.green}✓ Installed: ${plugin.name} v${plugin.version}${c.reset}`);
+      } else {
+        console.log(`Usage: imzx plugins [list|install <name>]`);
+      }
+    } catch (err: any) {
+      console.error(`${c.red}Plugin error: ${err.message}${c.reset}`);
+    }
+  }
+
+  /**
+   * `imzx orchestrate <task> [--strategy <name>]` — multi-agent orchestration.
+   */
+  private async handleOrchestrate(args: string[]): Promise<void> {
+    const task = args.filter(a => !a.startsWith('--')).join(' ');
+    const strategy = this.getArg(args, '--strategy');
+
+    if (!task) {
+      console.log(`Usage: imzx orchestrate <task> [--strategy router|hierarchical|consensus|chaining|evaluator-optimizer|parallelization]`);
+      return;
+    }
+
+    try {
+      const { Orchestrator } = await import('../../adapters/tools/orchestration.js');
+      const orchestrator = new Orchestrator();
+      const analysis = orchestrator.analyzeTask(task);
+      console.log(`${c.bold}Task analysis:${c.reset} ${analysis.type} → ${analysis.suggestedStrategy}`);
+      console.log(`${c.dim}Reasoning: ${analysis.reasoning}${c.reset}`);
+      if (strategy) {
+        console.log(`${c.yellow}Using strategy: ${strategy}${c.reset}`);
+      }
+    } catch (err: any) {
+      console.error(`${c.red}Orchestration error: ${err.message}${c.reset}`);
+    }
   }
 
   // --- Helpers ---

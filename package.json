@@ -1,18 +1,27 @@
 {
   "name": "@iamzulx/imzx",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "description": "High-performance AI Agent SDK \u2014 Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",
   "main": "interfaces/sdk/index.ts",
   "bin": {
-    "imzx": "./bin/imzx"
+    "imzx": "./bin/imzx.mjs"
   },
   "exports": {
     ".": "./interfaces/sdk/index.ts",
     "./cli": "./interfaces/cli/cli-handler.ts",
     "./server": "./interfaces/api/server.ts",
     "./mcp": "./adapters/external/mcp-adapter.ts",
-    "./python": "./interfaces/sdk/python/imzx.py"
+    "./python": "./interfaces/sdk/python/imzx.py",
+    "./a2a": "./adapters/external/a2a-adapter.ts",
+    "./dashboard": "./interfaces/dashboard/server.ts",
+    "./orchestration": "./adapters/tools/orchestration.ts",
+    "./telemetry": "./adapters/tools/telemetry.ts",
+    "./plugins": "./adapters/tools/plugin-system.ts",
+    "./git-context": "./adapters/tools/git-context.ts",
+    "./project-context": "./adapters/tools/project-context.ts",
+    "./embeddings": "./adapters/memory/embeddings.ts",
+    "./checkpoint": "./adapters/memory/conversation-checkpoint.ts"
   },
   "scripts": {
     "start": "tsx interfaces/cli/cli-handler.ts run",

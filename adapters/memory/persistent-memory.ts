@@ -18,6 +18,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { TfIdfEmbedder } from './embeddings.js';
 
 export interface MemoryEntry {
   id: string;
@@ -40,11 +41,14 @@ export class PersistentMemory {
   private store: MemoryStore;
   private filePath: string;
   private dirty: boolean = false;
+  private embedder: TfIdfEmbedder;
 
   constructor(baseDir?: string) {
     const dir = baseDir || path.join(process.cwd(), '.imzx');
     this.filePath = path.join(dir, 'memory.json');
     this.store = this.load();
+    this.embedder = new TfIdfEmbedder();
+    this.fitEmbedder();
   }
 
   // --- CRUD Operations ---
@@ -288,6 +292,70 @@ export class PersistentMemory {
     } catch (err) {
       console.error(`[Memory] Failed to persist: ${err}`);
     }
+  }
+
+  // --- Hybrid Search (keyword + TF-IDF) ---
+
+  /** Hybrid search combining keyword matching with TF-IDF cosine similarity. */
+  hybridSearch(query: string, topK: number = 10): MemoryEntry[] {
+    if (this.store.entries.length === 0) return [];
+
+    // 1. Keyword scores from existing recall
+    const keywordResults = this.recall(query, { limit: this.store.entries.length });
+    const keywordScores = new Map<string, number>();
+    keywordResults.forEach((entry, i) => {
+      // Normalize: higher rank = higher score
+      keywordScores.set(entry.id, (keywordResults.length - i) / keywordResults.length);
+    });
+
+    // 2. TF-IDF cosine similarity scores
+    this.fitEmbedder();
+    const queryVec = this.embedder.embed(query);
+    const tfidfScores = new Map<string, number>();
+    for (const entry of this.store.entries) {
+      const docText = `${entry.key} ${entry.content} ${entry.tags.join(' ')}`;
+      const docVec = this.embedder.embed(docText);
+      const sim = this.embedder.similarity(queryVec, docVec);
+      tfidfScores.set(entry.id, sim);
+    }
+
+    // 3. Reciprocal Rank Fusion (RRF) — combine both rankings
+    const k = 60; // RRF constant
+    const rrfScores = new Map<string, number>();
+    const allEntries = new Map<string, MemoryEntry>();
+
+    // Rank by keyword score
+    const keywordRanked = [...keywordResults].sort((a, b) => (keywordScores.get(b.id) ?? 0) - (keywordScores.get(a.id) ?? 0));
+    keywordRanked.forEach((entry, rank) => {
+      allEntries.set(entry.id, entry);
+      const prev = rrfScores.get(entry.id) ?? 0;
+      rrfScores.set(entry.id, prev + 1 / (k + rank + 1));
+    });
+
+    // Rank by TF-IDF score
+    const tfidfRanked = [...this.store.entries].sort((a, b) => (tfidfScores.get(b.id) ?? 0) - (tfidfScores.get(a.id) ?? 0));
+    tfidfRanked.forEach((entry, rank) => {
+      allEntries.set(entry.id, entry);
+      const prev = rrfScores.get(entry.id) ?? 0;
+      rrfScores.set(entry.id, prev + 1 / (k + rank + 1));
+    });
+
+    // Sort by combined RRF score
+    return [...allEntries.values()]
+      .map(e => ({ entry: e, score: rrfScores.get(e.id) ?? 0 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK)
+      .map(s => {
+        s.entry.access_count++;
+        this.dirty = true;
+        return s.entry;
+      });
+  }
+
+  private fitEmbedder(): void {
+    if (this.store.entries.length === 0) return;
+    const docs = this.store.entries.map(e => `${e.key} ${e.content} ${e.tags.join(' ')}`);
+    this.embedder.fit(docs);
   }
 
   /** Force save to disk. */

@@ -17,6 +17,9 @@
  * - Prompt injection for LLM context
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 export interface Entity {
   id: string;
   type: string;
@@ -41,6 +44,15 @@ export class KnowledgeGraph {
   private entities: Map<string, Entity> = new Map();
   private relations: Map<string, Relation> = new Map();
   private adjacency: Map<string, string[]> = new Map();
+  private filePath: string;
+  private dirty: boolean = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(baseDir?: string) {
+    const dir = baseDir || path.join(process.cwd(), '.imzx');
+    this.filePath = path.join(dir, 'knowledge-graph.json');
+    this.loadFromDisk();
+  }
 
   // --- Entity CRUD ---
 
@@ -52,6 +64,7 @@ export class KnowledgeGraph {
       existing.mentions++;
       existing.last_seen = new Date().toISOString();
       Object.assign(existing.properties, properties);
+      this.markDirty();
       return existing;
     }
 
@@ -59,6 +72,7 @@ export class KnowledgeGraph {
     const now = new Date().toISOString();
     const entity: Entity = { id, type, name, properties, mentions: 1, first_seen: now, last_seen: now };
     this.entities.set(id, entity);
+    this.markDirty();
     return entity;
   }
 
@@ -82,6 +96,7 @@ export class KnowledgeGraph {
     }
     this.adjacency.delete(id);
     this.entities.delete(id);
+    this.markDirty();
     return true;
   }
 
@@ -96,6 +111,7 @@ export class KnowledgeGraph {
     if (!this.adjacency.has(targetId)) this.adjacency.set(targetId, []);
     this.adjacency.get(sourceId)!.push(id);
     this.adjacency.get(targetId)!.push(id);
+    this.markDirty();
     return relation;
   }
 
@@ -159,6 +175,65 @@ export class KnowledgeGraph {
     }
   }
 
+  // --- Persistence ---
+
+  /** Load graph data from disk (called once in constructor). */
+  private loadFromDisk(): void {
+    try {
+      if (fs.existsSync(this.filePath)) {
+        const data = fs.readFileSync(this.filePath, 'utf-8');
+        const parsed = JSON.parse(data) as { entities: Entity[]; relations: Relation[] };
+        for (const e of parsed.entities || []) this.entities.set(e.id, e);
+        for (const r of parsed.relations || []) {
+          this.relations.set(r.id, r);
+          if (!this.adjacency.has(r.source_id)) this.adjacency.set(r.source_id, []);
+          if (!this.adjacency.has(r.target_id)) this.adjacency.set(r.target_id, []);
+          this.adjacency.get(r.source_id)!.push(r.id);
+          this.adjacency.get(r.target_id)!.push(r.id);
+        }
+      }
+    } catch {
+      // Corrupted or missing file — start fresh
+    }
+  }
+
+  /** Write graph to disk if dirty. */
+  private persist(): void {
+    if (!this.dirty) return;
+    try {
+      const dir = path.dirname(this.filePath);
+      fs.mkdirSync(dir, { recursive: true });
+      const payload = JSON.stringify({
+        entities: Array.from(this.entities.values()),
+        relations: Array.from(this.relations.values()),
+      }, null, 2);
+      fs.writeFileSync(this.filePath, payload, 'utf-8');
+      this.dirty = false;
+    } catch (err) {
+      console.error(`[KnowledgeGraph] Failed to persist: ${err}`);
+    }
+  }
+
+  /** Mark dirty and debounce writes (5-second cooldown). */
+  private markDirty(): void {
+    this.dirty = true;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.persist();
+      this.saveTimer = null;
+    }, 5000);
+  }
+
+  /** Force immediate save to disk. */
+  flush(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.dirty = true;
+    this.persist();
+  }
+
   // --- Search ---
 
   search(query: string, limit: number = 5): Array<{ entity: Entity; context: string }> {
@@ -200,7 +275,7 @@ export class KnowledgeGraph {
     return `\n\n## Knowledge Graph:\n${parts.join('\n')}`;
   }
 
-  // --- Stats & Persistence ---
+  // --- Stats & Export ---
 
   stats(): { entities: number; relations: number; topEntities: Array<{ name: string; type: string; mentions: number }> } {
     return {

@@ -1,0 +1,12 @@
+node_modules
+.imzx
+*.log
+dist
+core/target
+.git
+.github
+.env
+.env.*
+tests
+*.md
+!README.md

@@ -16,6 +16,8 @@ import type { AgentEnginePort, StreamChunk, SessionStats, AgentState } from '../
 import { executeTool, getToolDefinitions } from '../tools/tool-executor.js';
 import { buildSystemPrompt } from '../tools/prompts.js';
 import { AgentBrain } from '../memory/agent-brain.js';
+import type { TelemetryCollector } from '../tools/telemetry.js';
+import type { CheckpointManager } from '../memory/conversation-checkpoint.js';
 
 export interface AgentEngineConfig extends LlmProviderConfig {
   maxIterations?: number;
@@ -54,6 +56,8 @@ export class AgentEngine implements AgentEnginePort {
   private personaPrompt: string = '';
   /** Self-improving brain — memory, reflection, skills, self-modification. */
   public brain: AgentBrain;
+  private telemetry: TelemetryCollector | null = null;
+  private checkpointMgr: CheckpointManager | null = null;
 
   constructor(config: AgentEngineConfig) {
     this.config = {
@@ -68,6 +72,19 @@ export class AgentEngine implements AgentEnginePort {
     this.llm = new LlmProvider(config);
     this.tools = getToolDefinitions();
     this.brain = new AgentBrain();
+    // Lazy-init telemetry and checkpoint (dynamic imports to avoid hard deps)
+    this.initOptionalModules().catch(() => {});
+  }
+
+  private async initOptionalModules(): Promise<void> {
+    try {
+      const { TelemetryCollector } = await import('../tools/telemetry.js');
+      this.telemetry = new TelemetryCollector();
+    } catch { /* optional */ }
+    try {
+      const { CheckpointManager } = await import('../memory/conversation-checkpoint.js');
+      this.checkpointMgr = new CheckpointManager();
+    } catch { /* optional */ }
   }
 
   async initialize(id: string, description: string, prompt: string): Promise<string> {
@@ -209,6 +226,22 @@ export class AgentEngine implements AgentEnginePort {
       // [1.3] Track real cost
       this.trackCost(response.usage.inputTokens, response.usage.outputTokens);
 
+      // Telemetry: record LLM call span
+      try {
+        if (this.telemetry) {
+          this.telemetry.startTrace();
+          this.telemetry.recordLlmCall({
+            model: this.config.model,
+            provider: 'openrouter',
+            inputTokens: response.usage.inputTokens,
+            outputTokens: response.usage.outputTokens,
+            latencyMs: 0,
+            estimatedCostUsd: this.stats.totalCostUsd,
+            success: true,
+          });
+        }
+      } catch { /* optional */ }
+
       // If LLM returned text only (no tool calls) — final answer
       if (!response.toolCalls || response.toolCalls.length === 0) {
         const finalAnswer = response.content || '';
@@ -245,6 +278,18 @@ export class AgentEngine implements AgentEnginePort {
           toolResult = `Error: ${err.message}`;
         }
 
+        // Telemetry: record tool call span
+        try {
+          if (this.telemetry) {
+            this.telemetry.recordToolCall({
+              name: toolCall.name,
+              durationMs: 0,
+              success: !toolResult.startsWith('Error:'),
+              error: toolResult.startsWith('Error:') ? toolResult : undefined,
+            });
+          }
+        } catch { /* optional */ }
+
         // Truncate long results
         if (toolResult.length > 50000) {
           toolResult = toolResult.substring(0, 50000) + '\n... (truncated)';
@@ -261,6 +306,17 @@ export class AgentEngine implements AgentEnginePort {
     }
 
     this.state = 'idle';
+    // Auto-checkpoint
+    try {
+      if (this.checkpointMgr) {
+        this.checkpointMgr.maybeAutoCheckpoint(this.messages, {
+          inputTokens: this.stats.totalInputTokens,
+          outputTokens: this.stats.totalOutputTokens,
+          costUsd: this.stats.totalCostUsd,
+          requests: this.stats.requestCount,
+        });
+      }
+    } catch { /* optional */ }
     this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
     return 'Maximum iterations reached without a final answer.';
   }

@@ -1,6 +1,7 @@
 /**
- * LLM Provider — real OpenAI-compatible API client.
- * Supports: OpenRouter, Anthropic, OpenAI, local servers, any /v1/chat/completions.
+ * LLM Provider — multi-provider API client.
+ * Supports: OpenRouter, Anthropic native, Google Gemini, Ollama, OpenAI-compatible.
+ * v0.6.0: Added Anthropic/Gemini/Ollama native support, auto-detection, model routing.
  */
 
 export interface LlmMessage {
@@ -46,24 +47,71 @@ export interface LlmStreamChunk {
   toolName?: string;
 }
 
+export type LlmProviderType = 'openai-compatible' | 'anthropic' | 'google' | 'ollama';
+
 export interface LlmProviderConfig {
-  /** API endpoint (e.g., https://openrouter.ai/api/v1/chat/completions) */
   baseUrl: string;
-  /** API key */
   apiKey: string;
-  /** Model name (e.g., anthropic/claude-sonnet-4) */
   model: string;
-  /** Max tokens for response */
+  providerType?: LlmProviderType;
   maxTokens?: number;
-  /** Temperature (0-1) */
   temperature?: number;
+  routing?: {
+    simpleModel?: string;
+    complexModel?: string;
+    costThreshold?: number;
+  };
+}
+
+/** Auto-detect provider from API key prefix or base URL. */
+function detectProviderType(apiKey: string, baseUrl: string): LlmProviderType {
+  if (apiKey.startsWith('sk-ant-')) return 'anthropic';
+  if (apiKey.startsWith('AIza')) return 'google';
+  if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('11434')) return 'ollama';
+  if (baseUrl.includes('anthropic.com')) return 'anthropic';
+  if (baseUrl.includes('generativelanguage.googleapis.com')) return 'google';
+  return 'openai-compatible';
 }
 
 export class LlmProvider {
   private config: LlmProviderConfig;
+  private providerType: LlmProviderType;
 
   /** Auto-detect provider from environment variables. */
   static fromEnv(): LlmProviderConfig {
+    // Anthropic native
+    if (process.env.ANTHROPIC_API_KEY && !process.env.IMZX_LLM_BASE_URL && !process.env.OPENROUTER_API_KEY) {
+      const model = process.env.IMZX_MODEL || 'claude-sonnet-4-20250514';
+      return {
+        baseUrl: 'https://api.anthropic.com/v1/messages',
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        model,
+        providerType: 'anthropic',
+      };
+    }
+
+    // Google Gemini
+    if (process.env.GOOGLE_API_KEY) {
+      const model = process.env.IMZX_MODEL || 'gemini-2.0-flash';
+      return {
+        baseUrl: `https://generativelanguage.googleapis.com/v1beta/models/${model}`,
+        apiKey: process.env.GOOGLE_API_KEY,
+        model,
+        providerType: 'google',
+      };
+    }
+
+    // Ollama local
+    if (process.env.OLLAMA_HOST || process.env.IMZX_LOCAL_MODEL) {
+      const model = process.env.IMZX_LOCAL_MODEL || 'llama3.2';
+      return {
+        baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
+        apiKey: 'ollama',
+        model,
+        providerType: 'ollama',
+      };
+    }
+
     const baseUrl = process.env.IMZX_LLM_BASE_URL
       || (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1/chat/completions' : null)
       || (process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : null)
@@ -93,12 +141,201 @@ export class LlmProvider {
       temperature: 0.7,
       ...config,
     };
+    this.providerType = config.providerType || detectProviderType(config.apiKey, config.baseUrl);
+  }
+
+  /** Route to appropriate model based on task complexity. */
+  selectModel(taskComplexity: 'simple' | 'complex'): string {
+    if (!this.config.routing) return this.config.model;
+    return taskComplexity === 'complex'
+      ? (this.config.routing.complexModel || this.config.model)
+      : (this.config.routing.simpleModel || this.config.model);
   }
 
   /**
-   * Synchronous completion — returns full response.
+   * Synchronous completion — routes to provider-specific implementation.
    */
   async complete(messages: LlmMessage[], tools?: LlmTool[]): Promise<LlmResponse> {
+    switch (this.providerType) {
+      case 'anthropic':
+        return this.completeAnthropic(messages, tools);
+      case 'google':
+        return this.completeGoogle(messages);
+      case 'ollama':
+        return this.completeOllama(messages, tools);
+      default:
+        return this.completeOpenAI(messages, tools);
+    }
+  }
+
+  /**
+   * Streaming completion — yields chunks as they arrive.
+   */
+  async *stream(messages: LlmMessage[], tools?: LlmTool[]): AsyncGenerator<LlmStreamChunk> {
+    if (this.providerType === 'anthropic') {
+      yield* this.streamAnthropic(messages, tools);
+      return;
+    }
+    yield* this.streamOpenAI(messages, tools);
+  }
+
+  // --- Anthropic Native API ---
+
+  private async completeAnthropic(messages: LlmMessage[], tools?: LlmTool[]): Promise<LlmResponse> {
+    const systemMsg = messages.find(m => m.role === 'system');
+    const nonSystem = messages.filter(m => m.role !== 'system');
+
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      max_tokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      messages: nonSystem.map(m => ({
+        role: m.role === 'tool' ? 'user' : m.role,
+        content: m.role === 'tool' ? `[Tool result: ${m.content}]` : m.content,
+      })),
+    };
+
+    if (systemMsg) body.system = systemMsg.content;
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const response = await fetch(this.config.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => 'Unknown');
+      throw new Error(`Anthropic API error ${response.status}: ${err.substring(0, 200)}`);
+    }
+
+    const data = await response.json() as any;
+    const content = data.content?.find((b: any) => b.type === 'text')?.text ?? null;
+    const toolCalls = data.content?.filter((b: any) => b.type === 'tool_use').map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      arguments: JSON.stringify(b.input),
+    })) ?? [];
+
+    return {
+      content,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage: {
+        inputTokens: data.usage?.input_tokens || 0,
+        outputTokens: data.usage?.output_tokens || 0,
+      },
+    };
+  }
+
+  private async *streamAnthropic(messages: LlmMessage[], tools?: LlmTool[]): AsyncGenerator<LlmStreamChunk> {
+    // Anthropic streaming uses SSE similar to OpenAI but with different events
+    // For simplicity, fall back to non-streaming then yield
+    const response = await this.completeAnthropic(messages, tools);
+    if (response.content) yield { type: 'text', content: response.content };
+    if (response.toolCalls) {
+      for (const tc of response.toolCalls) {
+        yield { type: 'tool_call_start', content: tc.name, toolCallId: tc.id, toolName: tc.name };
+        yield { type: 'tool_call_args', content: tc.arguments, toolCallId: tc.id };
+        yield { type: 'tool_call_end', content: tc.arguments, toolCallId: tc.id, toolName: tc.name };
+      }
+    }
+    yield { type: 'done', content: '' };
+  }
+
+  // --- Google Gemini API ---
+
+  private async completeGoogle(messages: LlmMessage[]): Promise<LlmResponse> {
+    const contents = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    const body: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: this.config.maxTokens,
+        temperature: this.config.temperature,
+      },
+    };
+
+    const systemMsg = messages.find(m => m.role === 'system');
+    if (systemMsg) {
+      body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+    }
+
+    const url = `${this.config.baseUrl}:generateContent?key=${this.config.apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => 'Unknown');
+      throw new Error(`Google API error ${response.status}: ${err.substring(0, 200)}`);
+    }
+
+    const data = await response.json() as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+    const usage = data.usageMetadata || {};
+
+    return {
+      content: text,
+      usage: {
+        inputTokens: usage.promptTokenCount || 0,
+        outputTokens: usage.candidatesTokenCount || 0,
+      },
+    };
+  }
+
+  // --- Ollama Local API ---
+
+  private async completeOllama(messages: LlmMessage[], tools?: LlmTool[]): Promise<LlmResponse> {
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      stream: false,
+      options: {
+        num_predict: this.config.maxTokens,
+        temperature: this.config.temperature,
+      },
+    };
+
+    const response = await fetch(`${this.config.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => 'Unknown');
+      throw new Error(`Ollama error ${response.status}: ${err.substring(0, 200)}`);
+    }
+
+    const data = await response.json() as any;
+    return {
+      content: data.message?.content ?? null,
+      usage: {
+        inputTokens: data.prompt_eval_count || 0,
+        outputTokens: data.eval_count || 0,
+      },
+    };
+  }
+
+  // --- OpenAI-Compatible (OpenRouter, OpenAI, Groq, Together) ---
+
+  private async completeOpenAI(messages: LlmMessage[], tools?: LlmTool[]): Promise<LlmResponse> {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages,
@@ -125,11 +362,11 @@ export class LlmProvider {
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
       const hint = response.status === 401
-        ? ' — Check your API key in .env (OPENROUTER_API_KEY or ANTHROPIC_API_KEY)'
+        ? ' — Check your API key in .env'
         : response.status === 429
         ? ' — Rate limited. Wait a moment and try again.'
         : response.status === 500
-        ? ' — Server error. The API provider may be experiencing issues.'
+        ? ' — Server error.'
         : '';
       throw new Error(`LLM API error ${response.status}${hint}: ${errorText.substring(0, 200)}`);
     }
@@ -158,10 +395,7 @@ export class LlmProvider {
     };
   }
 
-  /**
-   * Streaming completion — yields chunks as they arrive.
-   */
-  async *stream(messages: LlmMessage[], tools?: LlmTool[]): AsyncGenerator<LlmStreamChunk> {
+  private async *streamOpenAI(messages: LlmMessage[], tools?: LlmTool[]): AsyncGenerator<LlmStreamChunk> {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages,
@@ -188,7 +422,7 @@ export class LlmProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`LLM API error ${response.status}${response.status === 401 ? " — Check API key in .env" : ""}: ${errorText.substring(0, 200)}`);
+      throw new Error(`LLM API error ${response.status}: ${errorText.substring(0, 200)}`);
     }
 
     const reader = response.body?.getReader();
@@ -220,16 +454,13 @@ export class LlmProvider {
           const delta = parsed.choices?.[0]?.delta;
           if (!delta) continue;
 
-          // Text content
           if (delta.content) {
             yield { type: 'text', content: delta.content };
           }
 
-          // Tool calls
           if (delta.tool_calls) {
             for (const tc of delta.tool_calls) {
               if (tc.function?.name) {
-                // New tool call starting
                 if (currentToolCall) {
                   yield { type: 'tool_call_end', content: currentToolCall.args, toolCallId: currentToolCall.id, toolName: currentToolCall.name };
                 }
@@ -248,7 +479,6 @@ export class LlmProvider {
       }
     }
 
-    // Flush remaining tool call
     if (currentToolCall) {
       yield { type: 'tool_call_end', content: currentToolCall.args, toolCallId: currentToolCall.id, toolName: currentToolCall.name };
     }

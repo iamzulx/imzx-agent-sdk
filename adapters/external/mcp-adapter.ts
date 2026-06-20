@@ -166,7 +166,7 @@ class HttpTransport implements McpTransport {
       body: JSON.stringify(msg),
     });
     
-    return response.json();
+    return response.json() as Promise<object>;
   }
 
   isConnected(): boolean {

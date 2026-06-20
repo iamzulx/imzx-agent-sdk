@@ -18,6 +18,11 @@ import { SecurityGuardrails } from '../tools/security-guardrails.js';
 import { ContextSummarizer } from './context-summarizer.js';
 import { OutputGuard } from '../tools/output-guard.js';
 import { AgentEvaluator } from './agent-evaluator.js';
+import { TfIdfEmbedder } from './embeddings.js';
+import { CheckpointManager } from './conversation-checkpoint.js';
+import { GitContext } from '../tools/git-context.js';
+import { ProjectContext } from '../tools/project-context.js';
+import { TelemetryCollector } from '../tools/telemetry.js';
 
 export class AgentBrain {
   public memory: PersistentMemory;
@@ -29,6 +34,9 @@ export class AgentBrain {
   public summarizer: ContextSummarizer;
   public outputGuard: OutputGuard;
   public evaluator: AgentEvaluator;
+  public embedder: TfIdfEmbedder;
+  public checkpoint: CheckpointManager;
+  private telemetry: TelemetryCollector | null = null;
 
   private taskStartTime: number = 0;
   private taskToolsUsed: string[] = [];
@@ -43,6 +51,8 @@ export class AgentBrain {
     this.summarizer = new ContextSummarizer();
     this.outputGuard = new OutputGuard();
     this.evaluator = new AgentEvaluator(this.memory, this.graph);
+    this.embedder = new TfIdfEmbedder();
+    this.checkpoint = new CheckpointManager({ baseDir: baseDir });
   }
 
   // --- Task Lifecycle ---
@@ -94,6 +104,19 @@ export class AgentBrain {
         [`Used tools: ${[...new Set(this.taskToolsUsed)].join(' -> ')}`],
       );
     }
+
+    // 6. Record telemetry span
+    try {
+      if (!this.telemetry) this.telemetry = new TelemetryCollector();
+      this.telemetry.startTrace();
+      this.telemetry.recordTaskCompletion({
+        taskType: this.classifyTask(userPrompt),
+        outcome,
+        durationMs: duration,
+        toolCount: this.taskToolsUsed.length,
+        totalTokens: this.taskToolsUsed.length * 1000,
+      });
+    } catch { /* telemetry is optional */ }
   }
 
   // --- Context Building ---
@@ -126,6 +149,35 @@ export class AgentBrain {
                     summary.trend === 'declining' ? 'declining' : 'stable';
       prompt += `\n\n## Performance Context:\n- Success rate: ${Math.round(summary.successRate * 100)}% (${summary.totalTasks} tasks)\n- Trend: ${trend}\n- Top tools: ${summary.topTools.map(t => t.tool).join(', ')}`;
     }
+
+    // Layer 6: Semantic memory search (TF-IDF)
+    if (userQuery) {
+      try {
+        const memories = this.memory.getByCategory('user');
+        if (memories.length > 0) {
+          const docs = memories.map(m => m.content);
+          const results = this.embedder.search(userQuery, docs, 3);
+          const relevant = results.filter(r => r.score > 0.1).map(r => docs[r.index]);
+          if (relevant.length > 0) {
+            prompt += `\n\n## Relevant Memories (semantic search):\n${relevant.map(m => `- ${m}`).join('\n')}`;
+          }
+        }
+      } catch { /* optional */ }
+    }
+
+    // Layer 7: Git context
+    try {
+      const git = new GitContext();
+      if (git.isGitRepo()) {
+        prompt += '\n\n' + git.formatForPrompt();
+      }
+    } catch { /* optional */ }
+
+    // Layer 8: Project context
+    try {
+      const project = new ProjectContext();
+      prompt += '\n\n' + project.formatForPrompt();
+    } catch { /* optional */ }
 
     return prompt;
   }
