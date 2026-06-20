@@ -136,7 +136,17 @@ imzx-agent-sdk/
 │   └── persistence/
 │       └── file-persona-repository.ts
 │   └── security/
-│       └── auth-manager.ts          # Multi-key auth, audit, IP allowlist
+│       ├── auth-manager.ts          # Multi-key auth, audit, IP allowlist
+│       └── policy-engine.ts         # Policy-as-Code governance rules
+│   └── tools/
+│       ├── hitl-manager.ts          # Human-in-the-Loop approval gates
+│       ├── llm-judge.ts             # LLM-as-a-Judge evaluation
+│       ├── cost-planner.ts          # Cost-aware planning + model routing
+│       ├── topology.ts              # Chain/Star/Mesh multi-agent topologies
+│       ├── agent-lifecycle.ts       # Agent lifecycle management
+│       ├── slm-router.ts            # Small Language Model auto-routing
+│       ├── cua-browser.ts           # Computer-Using Agent browser tools
+│       └── rag-pipeline.ts          # RAG pipeline (TF-IDF + graph)
 ├── domain/
 │   ├── personas/                   # Persona schema
 │   └── ports/                      # AgentEnginePort interface

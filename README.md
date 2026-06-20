@@ -32,7 +32,9 @@ Based on: [Reflexion](https://arxiv.org/abs/2303.11366) (Princeton/MIT), [HyperA
 | **Orchestration** | 6 strategies: Router, Hierarchical, Consensus, Chaining, Evaluator-Optimizer, Parallelization |
 | **Context** | Git-aware agent, project context loading (CLAUDE.md, AGENTS.md) |
 | **Plugins** | npm plugin system with hot reload and lifecycle hooks |
-| **DevOps** | Docker, cross-platform scripts, CI (GitHub Actions) |
+| **Production** | HITL approval, LLM-as-a-Judge, cost-aware routing, policy engine, topology patterns |
+| **Autonomous** | Agent lifecycle, SLM auto-routing, CUA browser, RAG pipeline |
+| **DevOps** | Docker, cross-platform binary scripts, CI (GitHub Actions) |
 | **Observability** | OpenTelemetry-compatible telemetry, web dashboard, JSONL logs |
 | **Interfaces** | CLI (single command), REST API (OpenAI-compatible), TypeScript SDK, Python SDK, Dashboard |
 | **Reliability** | Conversation checkpoints, deterministic replay, evaluation framework |
