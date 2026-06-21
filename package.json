@@ -1,6 +1,6 @@
 {
   "name": "@imzx/imzx",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "High-performance AI Agent SDK — Rust core (NAPI-RS) + TypeScript orchestration",
   "type": "module",
   "main": "interfaces/sdk/index.ts",
