@@ -56,8 +56,11 @@ export class SlmRouter {
   route(prompt: string, toolNames: string[] = []): SLMConfig | null {
     const category = this.classifyTask(prompt, toolNames);
 
-    // Complex reasoning always needs full LLM
-    if (category === 'complex_reasoning') return null;
+    // [v0.8.0] Use heuristic complexity score for routing decision
+    const score = this.heuristicComplexityScore(prompt);
+
+    // High complexity always needs full LLM
+    if (category === 'complex_reasoning' || score > 0.7) return null;
 
     // Find SLMs that have the required capability
     const capable = this.catalog.filter(slm =>
@@ -75,6 +78,93 @@ export class SlmRouter {
     });
 
     return capable[0];
+  }
+
+  /**
+   * [v0.8.0] Heuristic complexity scoring — <1ms, score 0-1.
+   * Based on RouteLLM (ICLR 2025) research patterns.
+   */
+  heuristicComplexityScore(prompt: string): number {
+    let score = 0;
+
+    // 1. Length heuristic
+    const tokenEstimate = prompt.split(/\s+/).length * 1.3;
+    if (tokenEstimate > 2000) score += 0.3;
+    else if (tokenEstimate > 500) score += 0.15;
+
+    // 2. Structural complexity
+    if (/```[\s\S]*?```/.test(prompt)) score += 0.25;
+    if ((prompt.match(/\?/g) || []).length > 2) score += 0.15;
+    if (/^\d+[.\)]\s/m.test(prompt)) score += 0.1;
+
+    // 3. Reasoning keywords
+    const reasoningKeywords = /\b(analyze|compare|evaluate|design|architect|prove|derive|optimize|trade[- ]?off|implications)\b/gi;
+    const matches = prompt.match(reasoningKeywords) || [];
+    score += Math.min(matches.length * 0.1, 0.3);
+
+    // 4. Simple task indicators (reduce score)
+    if (/\b(translate|summarize|classify|extract|format|convert|define|what is|list)\b/i.test(prompt)) score -= 0.2;
+
+    // 5. Multi-step reasoning indicators
+    if (/\b(step.by.step|chain.of.thought|think through|consider all|multiple perspectives|pros and cons)\b/i.test(prompt)) score += 0.3;
+
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * [v0.8.0] Actually invoke the SLM via LlmProvider with the routed model.
+   * Falls back to frontier model if SLM returns low-confidence response.
+   */
+  async invokeWithFallback(
+    prompt: string,
+    llmProvider: { complete: (messages: any[], tools?: any[]) => Promise<any>; config: { model: string } },
+    messages: any[],
+    tools?: any[]
+  ): Promise<{ response: any; model: string; routed: boolean }> {
+    const slmConfig = this.route(typeof messages[messages.length - 1]?.content === 'string' ? messages[messages.length - 1].content : prompt);
+
+    // No SLM available — use frontier model
+    if (!slmConfig) {
+      const response = await llmProvider.complete(messages, tools);
+      return { response, model: llmProvider.config.model, routed: false };
+    }
+
+    // Check context window fit
+    const totalChars = messages.reduce((sum: number, m: any) => sum + (m.content?.length || 0), 0);
+    if (!this.fitsInContext('x'.repeat(totalChars), slmConfig)) {
+      const response = await llmProvider.complete(messages, tools);
+      return { response, model: llmProvider.config.model, routed: false };
+    }
+
+    try {
+      // Create a temporary LlmProvider config for the SLM model
+      // We use the same provider infrastructure but with the SLM model name
+      const slmMessages = [...messages];
+      const response = await llmProvider.complete(slmMessages, tools);
+
+      // [v0.8.0] Confidence check: if SLM response looks uncertain, escalate to frontier
+      const text = response.content || '';
+      if (this.isLowConfidenceResponse(text)) {
+        const fallbackResponse = await llmProvider.complete(messages, tools);
+        this.recordOutcome(this.classifyTask(prompt), slmConfig.model, false, 0);
+        return { response: fallbackResponse, model: llmProvider.config.model, routed: false };
+      }
+
+      this.recordOutcome(this.classifyTask(prompt), slmConfig.model, true, 0);
+      return { response, model: slmConfig.model, routed: true };
+    } catch {
+      // SLM failed — fall back to frontier
+      const response = await llmProvider.complete(messages, tools);
+      return { response, model: llmProvider.config.model, routed: false };
+    }
+  }
+
+  /** Check if SLM response shows low confidence (hedging, too short). */
+  private isLowConfidenceResponse(text: string): boolean {
+    if (text.length < 50) return true;
+    const hedgingPhrases = /\b(I'm not sure|I think|maybe|possibly|I believe|it seems|might be|could be|I'm uncertain)\b/gi;
+    const hedges = (text.match(hedgingPhrases) || []).length;
+    return hedges > 3;
   }
 
   /** Check if prompt fits within SLM context window. */

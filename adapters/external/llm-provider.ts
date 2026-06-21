@@ -249,17 +249,123 @@ export class LlmProvider {
   }
 
   private async *streamAnthropic(messages: LlmMessage[], tools?: LlmTool[]): AsyncGenerator<LlmStreamChunk> {
-    // Anthropic streaming uses SSE similar to OpenAI but with different events
-    // For simplicity, fall back to non-streaming then yield
-    const response = await this.completeAnthropic(messages, tools);
-    if (response.content) yield { type: 'text', content: response.content };
-    if (response.toolCalls) {
-      for (const tc of response.toolCalls) {
-        yield { type: 'tool_call_start', content: tc.name, toolCallId: tc.id, toolName: tc.name };
-        yield { type: 'tool_call_args', content: tc.arguments, toolCallId: tc.id };
-        yield { type: 'tool_call_end', content: tc.arguments, toolCallId: tc.id, toolName: tc.name };
+    // [v0.8.0] Real Anthropic SSE streaming — proper event parsing with tool accumulation
+    const systemMsg = messages.find(m => m.role === 'system');
+    const nonSystem = messages.filter(m => m.role !== 'system');
+
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      max_tokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      stream: true,
+      messages: nonSystem.map(m => {
+        if (m.role === 'tool') {
+          return {
+            role: 'user' as const,
+            content: [{ type: 'tool_result', tool_use_id: m.tool_call_id || 'unknown', content: m.content || '' }],
+          };
+        }
+        return { role: m.role, content: m.content };
+      }),
+    };
+
+    if (systemMsg) body.system = systemMsg.content;
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const response = await fetch(this.config.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => 'Unknown');
+      throw new Error(`Anthropic API error ${response.status}: ${err.substring(0, 200)}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Tool accumulation state
+    const toolBuffers = new Map<number, { id: string; name: string; rawJson: string }>();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+        try {
+          const data = JSON.parse(trimmed.slice(6));
+
+          switch (data.type) {
+            case 'content_block_start':
+              if (data.content_block?.type === 'tool_use') {
+                toolBuffers.set(data.index, {
+                  id: data.content_block.id,
+                  name: data.content_block.name,
+                  rawJson: '',
+                });
+                yield { type: 'tool_call_start', content: data.content_block.name, toolCallId: data.content_block.id, toolName: data.content_block.name };
+              }
+              break;
+
+            case 'content_block_delta':
+              if (data.delta?.type === 'text_delta') {
+                yield { type: 'text', content: data.delta.text };
+              } else if (data.delta?.type === 'input_json_delta') {
+                const tb = toolBuffers.get(data.index);
+                if (tb) {
+                  tb.rawJson += data.delta.partial_json;
+                  yield { type: 'tool_call_args', content: data.delta.partial_json, toolCallId: tb.id };
+                }
+              }
+              break;
+
+            case 'content_block_stop':
+              if (toolBuffers.has(data.index)) {
+                const tb = toolBuffers.get(data.index)!;
+                yield { type: 'tool_call_end', content: tb.rawJson, toolCallId: tb.id, toolName: tb.name };
+                toolBuffers.delete(data.index);
+              }
+              break;
+
+            case 'message_delta':
+            case 'message_stop':
+            case 'message_start':
+            case 'ping':
+              // Metadata events — no chunks needed
+              break;
+
+            case 'error':
+              yield { type: 'text', content: `\n[Anthropic error: ${data.error?.message || 'unknown'}]` };
+              break;
+          }
+        } catch {
+          // Skip malformed JSON lines
+        }
       }
     }
+
     yield { type: 'done', content: '' };
   }
 
