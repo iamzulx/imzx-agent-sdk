@@ -236,7 +236,11 @@ impl Agent {
             self.memory
                 .add_message("user", input, Some(embedding.clone()));
             let results = self.memory.semantic_search(&embedding, 3);
-            results.iter().map(|e| format!("{}: {}", e.role, e.content)).collect::<Vec<_>>().join("\n")
+            results
+                .iter()
+                .map(|e| format!("{}: {}", e.role, e.content))
+                .collect::<Vec<_>>()
+                .join("\n")
         } else {
             self.memory.add_message("user", input, None);
             self.memory.get_context()
@@ -265,7 +269,10 @@ impl Agent {
             let full_context = if augmented_context.is_empty() {
                 context_str
             } else {
-                format!("{}\n\n## Augmented Memory:\n{}", context_str, augmented_context)
+                format!(
+                    "{}\n\n## Augmented Memory:\n{}",
+                    context_str, augmented_context
+                )
             };
 
             // Select model via orchestrator

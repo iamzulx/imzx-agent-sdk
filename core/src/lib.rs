@@ -116,10 +116,7 @@ mod napi_bindings {
         /// Run the agent with a user prompt. Returns the final response.
         #[napi]
         pub async fn run(&self, input: String) -> napi::Result<String> {
-            let mut agent = self
-                .inner
-                .lock()
-                .await;
+            let mut agent = self.inner.lock().await;
             agent
                 .run(&input)
                 .await

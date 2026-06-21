@@ -108,13 +108,11 @@ impl LocalEmbedder {
 
     fn tokenize(&self, text: &str) -> Vec<String> {
         let stopwords: std::collections::HashSet<&str> = [
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "have", "has", "had", "do", "does", "did", "will", "would",
-            "could", "should", "may", "might", "shall", "can", "need",
-            "and", "or", "but", "in", "on", "at", "to", "for", "of",
-            "with", "by", "from", "as", "into", "through", "during",
-            "dan", "di", "ke", "dari", "ini", "itu", "yang", "untuk",
-            "dengan", "pada", "adalah", "akan", "oleh",
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "have", "has", "had", "do",
+            "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can",
+            "need", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "from",
+            "as", "into", "through", "during", "dan", "di", "ke", "dari", "ini", "itu", "yang",
+            "untuk", "dengan", "pada", "adalah", "akan", "oleh",
         ]
         .iter()
         .cloned()
