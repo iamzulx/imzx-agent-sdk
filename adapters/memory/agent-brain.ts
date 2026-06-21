@@ -74,11 +74,11 @@ export class AgentBrain {
     this.reflection.recordTokens(count);
   }
 
-  onTaskEnd(userPrompt: string, agentResponse: string, outcome: 'success' | 'partial' | 'failure'): void {
+  async onTaskEnd(userPrompt: string, agentResponse: string, outcome: 'success' | 'partial' | 'failure'): Promise<void> {
     const duration = Date.now() - this.taskStartTime;
 
     // 1. Generate reflection
-    this.reflection.endTask(userPrompt, agentResponse, outcome);
+    await this.reflection.endTask(userPrompt, agentResponse, outcome);
 
     // 2. Record performance metric
     this.modifier.recordMetric({

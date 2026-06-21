@@ -31,6 +31,7 @@ export interface Reflection {
 
 export class ReflectionEngine {
   private memory: PersistentMemory;
+  private llmProvider: { complete: (messages: any[]) => Promise<{ content: string | null }> } | null = null;
   private currentTask: {
     startTime: number;
     toolsUsed: string[];
@@ -38,8 +39,14 @@ export class ReflectionEngine {
     messages: string[];
   } | null = null;
 
-  constructor(memory: PersistentMemory) {
+  constructor(memory: PersistentMemory, llmProvider?: { complete: (messages: any[]) => Promise<{ content: string | null }> }) {
     this.memory = memory;
+    this.llmProvider = llmProvider || null;
+  }
+
+  /** [v0.8.0] Set or update the LLM provider for LLM-based reflections. */
+  setLlmProvider(provider: { complete: (messages: any[]) => Promise<{ content: string | null }> }): void {
+    this.llmProvider = provider;
   }
 
   // --- Task Tracking ---
@@ -64,26 +71,33 @@ export class ReflectionEngine {
     if (this.currentTask) this.currentTask.tokenCount += count;
   }
 
-  /** End tracking and generate reflection. */
-  endTask(userPrompt: string, agentResponse: string, outcome: 'success' | 'partial' | 'failure'): Reflection | null {
+  /** End tracking and generate reflection. Uses LLM if available, otherwise templates. */
+  async endTask(userPrompt: string, agentResponse: string, outcome: 'success' | 'partial' | 'failure'): Promise<Reflection | null> {
     if (!this.currentTask) return null;
 
     const duration = Date.now() - this.currentTask.startTime;
     const uniqueTools = [...new Set(this.currentTask.toolsUsed)];
 
-    // Generate reflection based on outcome
-    const reflection: Reflection = {
-      id: `ref_${Date.now()}`,
-      task_summary: userPrompt.substring(0, 200),
-      outcome,
-      what_worked: this.extractWhatWorked(outcome, uniqueTools, duration),
-      what_failed: this.extractWhatFailed(outcome, agentResponse),
-      lessons: this.extractLessons(outcome, uniqueTools),
-      next_time: this.generateNextTime(outcome, uniqueTools),
-      created_at: new Date().toISOString(),
-      tokens_used: this.currentTask.tokenCount,
-      tools_used: uniqueTools,
-    };
+    let reflection: Reflection;
+
+    // [v0.8.0] Use LLM-based reflection when available
+    if (this.llmProvider) {
+      reflection = await this.generateLLMReflection(userPrompt, agentResponse, outcome, uniqueTools, duration);
+    } else {
+      // Fallback to template-based reflection
+      reflection = {
+        id: `ref_${Date.now()}`,
+        task_summary: userPrompt.substring(0, 200),
+        outcome,
+        what_worked: this.extractWhatWorked(outcome, uniqueTools, duration),
+        what_failed: this.extractWhatFailed(outcome, agentResponse),
+        lessons: this.extractLessons(outcome, uniqueTools),
+        next_time: this.generateNextTime(outcome, uniqueTools),
+        created_at: new Date().toISOString(),
+        tokens_used: this.currentTask.tokenCount,
+        tools_used: uniqueTools,
+      };
+    }
 
     // Store reflection in memory
     this.memory.save('session', `reflection_${reflection.id}`, this.formatReflection(reflection), {
@@ -101,6 +115,113 @@ export class ReflectionEngine {
 
     this.currentTask = null;
     return reflection;
+  }
+
+  /**
+   * [v0.8.0] LLM-based reflection generation — Reflexion pattern.
+   * Asks the LLM to analyze what happened and produce structured insights.
+   */
+  private async generateLLMReflection(
+    userPrompt: string,
+    agentResponse: string,
+    outcome: 'success' | 'partial' | 'failure',
+    tools: string[],
+    durationMs: number
+  ): Promise<Reflection> {
+    const reflectionPrompt = `You are a learning agent analyzing a completed task. Produce a structured reflection.
+
+TASK: ${userPrompt.substring(0, 500)}
+OUTCOME: ${outcome}
+TOOLS USED: ${tools.join(', ') || 'none'}
+DURATION: ${durationMs}ms
+RESPONSE (first 500 chars): ${agentResponse.substring(0, 500)}
+
+Respond in this exact JSON format:
+{
+  "what_worked": ["specific thing 1 that worked well", "specific thing 2"],
+  "what_failed": ["specific issue 1", "specific issue 2"],
+  "lessons": ["actionable lesson 1 for future tasks", "actionable lesson 2"],
+  "next_time": "One concrete strategy for handling similar tasks better"
+}`;
+
+    try {
+      const llmResponse = await this.llmProvider!.complete([
+        { role: 'system', content: 'You are a reflection engine. Analyze task outcomes and produce structured, actionable insights. Always respond with valid JSON.' },
+        { role: 'user', content: reflectionPrompt },
+      ]);
+
+      const parsed = JSON.parse(llmResponse.content || '{}');
+      return {
+        id: `ref_${Date.now()}`,
+        task_summary: userPrompt.substring(0, 200),
+        outcome,
+        what_worked: Array.isArray(parsed.what_worked) ? parsed.what_worked : [],
+        what_failed: Array.isArray(parsed.what_failed) ? parsed.what_failed : [],
+        lessons: Array.isArray(parsed.lessons) ? parsed.lessons : [],
+        next_time: typeof parsed.next_time === 'string' ? parsed.next_time : this.generateNextTime(outcome, tools),
+        created_at: new Date().toISOString(),
+        tokens_used: this.currentTask?.tokenCount || 0,
+        tools_used: tools,
+      };
+    } catch {
+      // LLM reflection failed — fall back to templates
+      return {
+        id: `ref_${Date.now()}`,
+        task_summary: userPrompt.substring(0, 200),
+        outcome,
+        what_worked: this.extractWhatWorked(outcome, tools, durationMs),
+        what_failed: this.extractWhatFailed(outcome, agentResponse),
+        lessons: this.extractLessons(outcome, tools),
+        next_time: this.generateNextTime(outcome, tools),
+        created_at: new Date().toISOString(),
+        tokens_used: this.currentTask?.tokenCount || 0,
+        tools_used: tools,
+      };
+    }
+  }
+
+  /**
+   * [v0.8.0] Self-Refine pattern — FEEDBACK → REFINE loop on an output.
+   * Iteratively critiques and improves an output until convergence or max iterations.
+   */
+  async selfRefine(
+    task: string,
+    initialOutput: string,
+    maxIterations: number = 2
+  ): Promise<{ output: string; iterations: number; approved: boolean }> {
+    if (!this.llmProvider) return { output: initialOutput, iterations: 0, approved: true };
+
+    let output = initialOutput;
+    let iterations = 0;
+
+    for (let i = 0; i < maxIterations; i++) {
+      iterations++;
+
+      // FEEDBACK step: critique the current output
+      const feedback = await this.llmProvider.complete([
+        { role: 'system', content: `Critique the following output for the task.
+Identify specific issues. Be constructive and actionable.
+If the output is excellent, respond with exactly: APPROVED` },
+        { role: 'user', content: `Task: ${task}\n\nOutput:\n${output}` },
+      ]);
+
+      const feedbackText = feedback.content || '';
+
+      // Check for convergence
+      if (feedbackText.includes('APPROVED')) {
+        return { output, iterations, approved: true };
+      }
+
+      // REFINE step: improve based on feedback
+      const refined = await this.llmProvider.complete([
+        { role: 'system', content: 'Improve the output based on the feedback. Address every issue. Produce the complete improved output.' },
+        { role: 'user', content: `Task: ${task}\nCurrent output:\n${output}\n\nFeedback:\n${feedbackText}` },
+      ]);
+
+      output = refined.content || output;
+    }
+
+    return { output, iterations, approved: false };
   }
 
   // --- Reflection Generation ---

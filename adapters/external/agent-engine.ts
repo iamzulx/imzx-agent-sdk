@@ -281,7 +281,7 @@ export class AgentEngine implements AgentEnginePort {
         const finalAnswer = response.content || '';
         this.messages.push({ role: 'assistant', content: finalAnswer });
         this.state = 'idle';
-        this.brain.onTaskEnd(prompt, finalAnswer, 'success'); // [Brain] task done
+        await this.brain.onTaskEnd(prompt, finalAnswer, 'success'); // [Brain] task done
         return finalAnswer;
       }
 
@@ -351,7 +351,7 @@ export class AgentEngine implements AgentEnginePort {
         });
       }
     } catch { /* optional */ }
-    this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
+    await this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
     return 'Maximum iterations reached without a final answer.';
   }
 
@@ -430,7 +430,7 @@ export class AgentEngine implements AgentEnginePort {
       if (toolCallsAccumulated.length === 0) {
         this.messages.push({ role: 'assistant', content: fullContent });
         this.state = 'idle';
-        this.brain.onTaskEnd(prompt, fullContent, 'success'); // [Brain] task done
+        await this.brain.onTaskEnd(prompt, fullContent, 'success'); // [Brain] task done
         yield { type: 'done', content: fullContent };
         return;
       }
@@ -474,7 +474,7 @@ export class AgentEngine implements AgentEnginePort {
       }
     }
 
-    this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
+    await this.brain.onTaskEnd(prompt, 'Maximum iterations reached', 'failure'); // [Brain] task failed
     yield { type: 'error', content: 'Maximum iterations reached' };
     this.state = 'idle';
   }
