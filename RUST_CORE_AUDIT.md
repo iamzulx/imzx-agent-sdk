@@ -2,8 +2,8 @@
 
 **Audit Date**: 2026-06-21  
 **Scope**: 15 Rust files (core/src/ + core/Cargo.toml)  
-**Total Lines**: ~2,954 lines Rust  
-**Status**: Original v0.5.0, never modified since initial commit
+**Total Lines**: ~3,200 lines Rust (was ~2,954)  
+**Status**: ✅ 14/16 findings resolved, 2 deferred (M2, M3 — deps used by WebScraperTool)
 
 ---
 
