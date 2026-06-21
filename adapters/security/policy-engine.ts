@@ -194,7 +194,11 @@ export class PolicyEngine {
       switch (c.operator) {
         case 'equals': return value === c.value;
         case 'contains': return typeof value === 'string' && typeof c.value === 'string' && value.includes(c.value);
-        case 'regex': return typeof value === 'string' && typeof c.value === 'string' && new RegExp(c.value).test(value);
+        case 'regex': {
+          // [S8 FIX] Safe regex — catch invalid patterns to prevent ReDoS
+          if (typeof value !== 'string' || typeof c.value !== 'string') return false;
+          try { return new RegExp(c.value).test(value); } catch { return false; }
+        }
         case 'gt': return typeof value === 'number' && typeof c.value === 'number' && value > c.value;
         case 'lt': return typeof value === 'number' && typeof c.value === 'number' && value < c.value;
         case 'in': return Array.isArray(c.value) && c.value.includes(value);

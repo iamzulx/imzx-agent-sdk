@@ -154,7 +154,7 @@ export class KnowledgeGraph {
     const tools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'run_command', 'search_files', 'web_search', 'web_fetch', 'calculate', 'run_code', 'grep', 'find', 'ls', 'git', 'npm', 'cargo', 'python', 'node'];
     for (const t of tools) { if (message.includes(t)) add(t, 'tool'); }
 
-    const stops = new Set(['The', 'This', 'That', 'What', 'When', 'Where', 'How', 'Why', 'Can', 'Fix', 'Add', 'Run', 'Use', 'Get', 'Set']);
+    const stops = new Set(['The', 'This', 'That', 'What', 'When', 'Where', 'How', 'Why', 'Can', 'Fix', 'Add', 'Run', 'Use', 'Get', 'Set', 'Has', 'Had', 'Was', 'Were', 'Are', 'Not', 'But', 'And', 'For', 'With', 'From', 'Into', 'Out', 'All', 'Its', 'Our', 'Your', 'His', 'Her', 'Their', 'Been', 'Will', 'May', 'Let', 'Say', 'See', 'Try', 'Too', 'Also', 'Just', 'Then', 'Some', 'More', 'Very', 'Only', 'Each', 'Other', 'Much', 'Such', 'Than', 'Back', 'Even', 'Still', 'Over', 'Down', 'Here', 'There', 'After', 'Before', 'About', 'Error', 'TODO', 'HTTP', 'HTTPS', 'API', 'URL', 'JSON', 'YAML', 'TODO', 'HACK', 'FIXME', 'XXX', 'NOTE']);
     for (const m of message.matchAll(/\b[A-Z][a-z]{2,}\b/g)) { if (!stops.has(m[0])) add(m[0], 'concept'); }
 
     return entities;
@@ -168,9 +168,11 @@ export class KnowledgeGraph {
       .map(e => Array.from(this.entities.values()).find(ge => ge.type === e.type && ge.name.toLowerCase() === e.name.toLowerCase())?.id)
       .filter(Boolean) as string[];
 
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        this.addRelation(ids[i], ids[j], 'co_occurs', {}, 0.3);
+    // [C11 FIX] Limit co-occurrence to prevent O(n²) explosion — cap at 20 entities per message
+    const cappedIds = ids.slice(0, 20);
+    for (let i = 0; i < cappedIds.length; i++) {
+      for (let j = i + 1; j < cappedIds.length; j++) {
+        this.addRelation(cappedIds[i], cappedIds[j], 'co_occurs', {}, 0.3);
       }
     }
   }

@@ -548,13 +548,21 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       try {
         await fs.writeFile(tmpFile, code, 'utf-8');
         const cmd = lang === 'python' ? `python3 ${tmpFile}` : `node ${tmpFile}`;
+        // [S3 FIX] Strip sensitive env vars — only pass safe subset
+        const SENSITIVE_KEYS = ['API_KEY', 'SECRET', 'TOKEN', 'PASSWORD', 'PRIVATE', 'CREDENTIAL'];
+        const safeEnv: Record<string, string> = { PATH: process.env.PATH || '', HOME: process.env.HOME || '', TERM: 'dumb', LANG: process.env.LANG || 'en_US.UTF-8' };
+        for (const [k, v] of Object.entries(process.env)) {
+          if (v && !SENSITIVE_KEYS.some(sk => k.toUpperCase().includes(sk))) {
+            safeEnv[k] = v;
+          }
+        }
         const output = execSync(cmd, {
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
           encoding: 'utf-8',
-          env: { ...process.env, TERM: 'dumb' },
+          env: safeEnv,
         });
-        return output.substring(0, 50000) || '(no output)';
+        return smartTruncate(output, 50000);
       } catch (err: any) {
         return `Code error: ${err.stderr || err.message}`.substring(0, 5000);
       } finally {

@@ -160,7 +160,7 @@ export class LlmProvider {
       case 'anthropic':
         return this.completeAnthropic(messages, tools);
       case 'google':
-        return this.completeGoogle(messages);
+        return this.completeGoogle(messages, tools);
       case 'ollama':
         return this.completeOllama(messages, tools);
       default:
@@ -189,10 +189,20 @@ export class LlmProvider {
       model: this.config.model,
       max_tokens: this.config.maxTokens,
       temperature: this.config.temperature,
-      messages: nonSystem.map(m => ({
-        role: m.role === 'tool' ? 'user' : m.role,
-        content: m.role === 'tool' ? `[Tool result: ${m.content}]` : m.content,
-      })),
+      messages: nonSystem.map(m => {
+        // [C13 FIX] Use proper Anthropic tool_result content block format
+        if (m.role === 'tool') {
+          return {
+            role: 'user' as const,
+            content: [{
+              type: 'tool_result',
+              tool_use_id: m.tool_call_id || 'unknown',
+              content: m.content || '',
+            }],
+          };
+        }
+        return { role: m.role, content: m.content };
+      }),
     };
 
     if (systemMsg) body.system = systemMsg.content;
@@ -255,7 +265,7 @@ export class LlmProvider {
 
   // --- Google Gemini API ---
 
-  private async completeGoogle(messages: LlmMessage[]): Promise<LlmResponse> {
+  private async completeGoogle(messages: LlmMessage[], tools?: LlmTool[]): Promise<LlmResponse> {
     const contents = messages.filter(m => m.role !== 'system').map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
@@ -269,15 +279,30 @@ export class LlmProvider {
       },
     };
 
+    // [GT FIX] Pass tools to Google Gemini API (function calling support)
+    if (tools && tools.length > 0) {
+      body.tools = [{
+        functionDeclarations: tools.map(t => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        })),
+      }];
+    }
+
     const systemMsg = messages.find(m => m.role === 'system');
     if (systemMsg) {
       body.systemInstruction = { parts: [{ text: systemMsg.content }] };
     }
 
-    const url = `${this.config.baseUrl}:generateContent?key=${this.config.apiKey}`;
+    // [S2 FIX] API key in header instead of URL — prevents exposure in server/proxy logs
+    const url = `${this.config.baseUrl}:generateContent`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': this.config.apiKey,
+      },
       body: JSON.stringify(body),
     });
 
@@ -311,6 +336,18 @@ export class LlmProvider {
         temperature: this.config.temperature,
       },
     };
+
+    // [GT FIX] Pass tools to Ollama API (function calling for compatible models)
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        },
+      }));
+    }
 
     const response = await fetch(`${this.config.baseUrl}/api/chat`, {
       method: 'POST',

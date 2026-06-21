@@ -53,7 +53,7 @@ export class StarTopology {
 
     // Orchestrator decomposes task
     const decomposition = await orchestrator.execute(
-      `Decpose this task into ${workers.length} independent subtasks:\n${task}\n\nReturn JSON array: ["subtask1", "subtask2", ...]`,
+      `Decompose this task into ${workers.length} independent subtasks:\n${task}\n\nReturn JSON array: ["subtask1", "subtask2", ...]`,
       context
     );
 

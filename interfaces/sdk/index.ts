@@ -116,10 +116,15 @@ export async function createAgent(config: AgentConfig = {}): Promise<AgentInstan
     },
 
     async *stream(prompt: string, options: Omit<RunOptions, 'streaming'> = {}): AsyncGenerator<StreamChunk> {
-      const chunks: StreamChunk[] = [];
+      // [C1 FIX] Use proper async queue pattern to avoid race condition
+      const queue: StreamChunk[] = [];
       let resolve: (() => void) | null = null;
       let done = false;
       let error: Error | null = null;
+
+      const notify = () => {
+        if (resolve) { const r = resolve; resolve = null; r(); }
+      };
 
       // Start streaming in background
       const runPromise = agentService.execute(defaultPersona, prompt, {
@@ -127,33 +132,32 @@ export async function createAgent(config: AgentConfig = {}): Promise<AgentInstan
         streaming: true,
         budget: options.budget || config.budget,
         onChunk: (chunk) => {
-          chunks.push(chunk);
-          resolve?.();
+          queue.push(chunk);
+          notify();
         },
+      }).then(() => {
+        done = true;
+        notify();
       }).catch((err) => {
         error = err;
-        resolve?.(); // Wake up the waiting loop
+        done = true;
+        notify();
       });
 
-      // Yield chunks as they arrive
-      while (!done) {
-        while (chunks.length > 0) {
-          const chunk = chunks.shift()!;
-          if (chunk.type === 'done') {
-            done = true;
-            break;
-          }
+      // Yield chunks as they arrive — check queue BEFORE awaiting
+      while (true) {
+        while (queue.length > 0) {
+          const chunk = queue.shift()!;
+          if (chunk.type === 'done') { await runPromise; return; }
           yield chunk;
         }
         if (error) {
-          yield { type: 'error', content: (error as Error).message };
-          done = true;
-        } else if (!done) {
-          await new Promise<void>(r => { resolve = r; });
+          yield { type: 'error' as any, content: (error as Error).message };
+          return;
         }
+        if (done) { await runPromise; return; }
+        await new Promise<void>(r => { resolve = r; });
       }
-
-      await runPromise;
     },
 
     async stats(): Promise<SessionStats | null> {

@@ -70,6 +70,7 @@ export class TelemetryCollector {
     this.ensureDir();
     // Auto-flush every 5 seconds
     this.flushInterval = setInterval(() => this.flush(), 5000);
+    this.flushInterval.unref(); // [C14 FIX] Don't keep process alive
   }
 
   /** Start a new trace context. */

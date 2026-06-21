@@ -31,6 +31,16 @@ function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolea
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
   if (!entry || now > entry.resetAt) {
+    // [S6 FIX] Cap map size to prevent OOM — evict expired entries if over limit
+    if (rateLimitMap.size > 10_000) {
+      for (const [k, v] of rateLimitMap) {
+        if (now > v.resetAt) rateLimitMap.delete(k);
+      }
+      if (rateLimitMap.size > 10_000) {
+        const entries = [...rateLimitMap.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+        for (let i = 0; i < entries.length / 2; i++) rateLimitMap.delete(entries[i][0]);
+      }
+    }
     rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
     return true;
   }
@@ -98,8 +108,8 @@ export async function createServer(agentService: AgentService, options: ServerOp
     }
 
     // CORS headers
-    // [H5 FIX] Configurable CORS origin
-    const allowedOrigin = process.env.IMZX_CORS_ORIGIN || '*';
+    // [S9 FIX] Default CORS to request origin — wildcard only if explicitly configured
+    const allowedOrigin = process.env.IMZX_CORS_ORIGIN || req.headers.origin || 'null';
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -150,6 +160,10 @@ export async function createServer(agentService: AgentService, options: ServerOp
         }
 
         const personaName = persona || 'general-purpose';
+        // [S5 FIX] Validate persona name — prevent path traversal
+        if (!/^[a-zA-Z0-9_-]+$/.test(personaName)) {
+          return jsonResponse(res, 400, { error: 'Invalid persona name (alphanumeric, dash, underscore only)' });
+        }
 
         // SSE streaming mode
         if (streaming) {

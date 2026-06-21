@@ -262,8 +262,10 @@ export class CliHandler {
             console.log(`${c.cyan}/exit${c.reset} — Quit chat`);
             break;
           case '/history':
-            const histLen = this.agentService.getCurrentPersona();
-            console.log(`${c.cyan}Conversation active with persona: ${histLen?.id || currentPersona}${c.reset}`);
+            // [C16 FIX] Show actual conversation info, not just persona
+            const persona = this.agentService.getCurrentPersona();
+            console.log(`${c.cyan}Active persona: ${persona?.id || currentPersona}${c.reset}`);
+            console.log(`${c.cyan}Use /reset to clear conversation history.${c.reset}`);
             break;
           case '/reset':
             // Re-initialize to clear history

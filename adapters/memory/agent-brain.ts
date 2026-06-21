@@ -40,6 +40,8 @@ export class AgentBrain {
 
   private taskStartTime: number = 0;
   private taskToolsUsed: string[] = [];
+  // [C8 FIX] Cache git context to avoid re-creating GitContext every ReAct iteration
+  private _gitContextCache: string | null = null;
 
   constructor(baseDir?: string) {
     this.memory = new PersistentMemory(baseDir);
@@ -166,10 +168,18 @@ export class AgentBrain {
     }
 
     // Layer 7: Git context
+    // [C8 FIX] Cache GitContext — only create once per session, not every ReAct iteration
     try {
-      const git = new GitContext();
-      if (git.isGitRepo()) {
-        prompt += '\n\n' + git.formatForPrompt();
+      if (!this._gitContextCache) {
+        const git = new GitContext();
+        if (git.isGitRepo()) {
+          this._gitContextCache = git.formatForPrompt();
+        } else {
+          this._gitContextCache = '';
+        }
+      }
+      if (this._gitContextCache) {
+        prompt += '\n\n' + this._gitContextCache;
       }
     } catch { /* optional */ }
 

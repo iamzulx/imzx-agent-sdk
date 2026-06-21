@@ -24,7 +24,8 @@ import { randomBytes } from 'node:crypto';
 // ── Config ────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port')
   || process.env.IMZX_DASHBOARD_PORT || '3100');
-const HOST = process.env.IMZX_DASHBOARD_HOST || '0.0.0.0';
+// [S4 FIX] Default to localhost only — prevents exposure on LAN
+const HOST = process.env.IMZX_DASHBOARD_HOST || '127.0.0.1';
 const DATA_DIR = process.env.IMZX_DATA_DIR || join(process.cwd(), '.imzx');
 const API_KEY = process.env.IMZX_API_KEY;
 
@@ -43,6 +44,16 @@ function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolea
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
   if (!entry || now > entry.resetAt) {
+    // [S6 FIX] Cap map size to prevent OOM
+    if (rateLimitMap.size > 10_000) {
+      for (const [k, v] of rateLimitMap) {
+        if (now > v.resetAt) rateLimitMap.delete(k);
+      }
+      if (rateLimitMap.size > 10_000) {
+        const entries = [...rateLimitMap.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+        for (let i = 0; i < entries.length / 2; i++) rateLimitMap.delete(entries[i][0]);
+      }
+    }
     rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
     return true;
   }

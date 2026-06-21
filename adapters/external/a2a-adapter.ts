@@ -237,18 +237,8 @@ function isValidTask(task: unknown): task is A2ATask {
 
 // ── A2A Adapter ─────────────────────────────────────────────────────────────
 
-export interface A2AAdapterConfig {
-  port: number;
-  agentCard: AgentCard;
-  /** Optional API key for Bearer token authentication. If unset, auth is disabled. */
-  apiKey?: string;
-  /** Max requests per IP per window. Default: 30. */
-  rateLimitMax?: number;
-  /** Rate limit window in milliseconds. Default: 60000 (1 min). */
-  rateLimitWindowMs?: number;
-  /** Max request body size in bytes. Default: 10MB. */
-  maxBodySize?: number;
-}
+// [C3 FIX] Duplicate A2AAdapterConfig removed — canonical definition is above (line 52)
+// with hmacSecret, requireHmac, tls fields.
 
 export class A2AAdapter {
   private readonly port: number;

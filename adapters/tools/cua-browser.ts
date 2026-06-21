@@ -10,7 +10,7 @@
  * - Page content extraction (text, links, metadata)
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -129,16 +129,17 @@ export class CuaBrowser {
     const path = join(this.config.screenshotDir, filename);
 
     // Try platform-specific screenshot tools
-    const commands = [
-      `termux-screenshot "${path}"`,
-      `scrot "${path}"`,
-      `screencapture -x "${path}"`,
-      `import -window root "${path}"`,
+    // [S1 FIX] Use execFileSync with argument arrays — no shell injection
+    const commands: Array<{ cmd: string; args: string[] }> = [
+      { cmd: 'termux-screenshot', args: [path] },
+      { cmd: 'scrot', args: [path] },
+      { cmd: 'screencapture', args: ['-x', path] },
+      { cmd: 'import', args: ['-window', 'root', path] },
     ];
 
-    for (const cmd of commands) {
+    for (const { cmd, args } of commands) {
       try {
-        execSync(cmd, { timeout: 10_000, stdio: 'pipe' });
+        execFileSync(cmd, args, { timeout: 10_000, stdio: 'pipe' });
         return { path, timestamp };
       } catch {
         continue;
@@ -162,13 +163,38 @@ export class CuaBrowser {
   // ── Internal Methods ─────────────────────────────────────────────────────
 
   private async fetchHtml(url: string): Promise<string> {
-    // Use curl for HTTP fetching (works on Termux without puppeteer)
-    const escapedUrl = url.replace(/"/g, '\\"');
-    const result = execSync(
-      `curl -sL --max-time ${Math.floor(this.config.timeoutMs / 1000)} -A "${this.config.userAgent}" "${escapedUrl}"`,
-      { timeout: this.config.timeoutMs, encoding: 'utf-8', maxBuffer: 5 * 1024 * 1024 }
-    );
-    return result;
+    // [S1 FIX] Use native fetch() instead of execSync curl — prevents command injection
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Unsupported protocol: ${parsed.protocol}`);
+    }
+    // Block private/internal addresses (SSRF protection)
+    const hostname = parsed.hostname;
+    const isPrivate = hostname === 'localhost' || hostname === '0.0.0.0'
+      || hostname === '::1' || hostname.startsWith('127.')
+      || hostname.startsWith('10.') || hostname.startsWith('192.168.')
+      || hostname.startsWith('172.16.') || hostname.startsWith('172.17.')
+      || hostname.startsWith('172.18.') || hostname.startsWith('172.19.')
+      || hostname.startsWith('172.2') || hostname.startsWith('172.30.')
+      || hostname.startsWith('172.31.') || hostname.startsWith('169.254.')
+      || hostname.startsWith('fd') || hostname.startsWith('fe80');
+    if (isPrivate) {
+      throw new Error('Access to private/internal addresses is blocked.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    try {
+      const response = await fetch(parsed.href, {
+        headers: { 'User-Agent': this.config.userAgent },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const text = await response.text();
+      return text.slice(0, 5 * 1024 * 1024); // 5MB limit
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private extractContent(html: string, url: string): PageContent {

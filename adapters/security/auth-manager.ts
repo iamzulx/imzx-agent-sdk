@@ -82,7 +82,13 @@ export function cidrMatch(ip: string, cidr: string): boolean {
 }
 
 function ipToNumber(ip: string): number | null {
-  const parts = ip.split('.');
+  // [S10 FIX] Handle IPv6-mapped IPv4 (::ffff:127.0.0.1) and localhost IPv6
+  let normalized = ip;
+  if (normalized.startsWith('::ffff:')) {
+    normalized = normalized.slice(7);
+  }
+  if (normalized === '::1') return 127;
+  const parts = normalized.split('.');
   if (parts.length !== 4) return null;
   let num = 0;
   for (let i = 0; i < 4; i++) {

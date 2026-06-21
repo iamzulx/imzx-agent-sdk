@@ -265,8 +265,15 @@ export class HitlManager {
       if (r.condition.toolName && r.condition.toolName !== toolName) return false;
       if (r.condition.taskType && r.condition.taskType !== taskType) return false;
       if (r.condition.pattern) {
+        // [S7 FIX] Validate regex pattern before use — prevent ReDoS
+        let regex: RegExp;
+        try {
+          regex = new RegExp(r.condition.pattern, 'i');
+        } catch {
+          return false; // Invalid regex — skip this rule
+        }
         const target = `${taskType || ''} ${toolName || ''}`;
-        if (!new RegExp(r.condition.pattern, 'i').test(target)) return false;
+        if (!regex.test(target)) return false;
       }
       return true;
     });
