@@ -1,8 +1,59 @@
-1|# Changelog
-2|
-3|All notable changes to imzx-agent-sdk are documented in this file.
-4|
-5|## [0.7.0] — 2026-06-21
+# Changelog
+
+All notable changes to imzx-agent-sdk are documented in this file.
+
+## [0.7.1] — 2026-06-21
+
+### Security Fixes (10)
+- **S1**: CUA browser command injection → native `fetch()` + SSRF block + `execFileSync`
+- **S2**: Google API key leaked in URL → moved to `x-goog-api-key` header
+- **S3**: `run_code` executed with full env → sandboxed (API_KEY/SECRET/TOKEN stripped)
+- **S4**: Dashboard bound `0.0.0.0` → default `127.0.0.1`
+- **S5**: API persona endpoint path traversal → regex validation `^[a-zA-Z0-9_-]+$`
+- **S6**: Rate limiter unbounded Map → 10K cap with eviction
+- **S7**: HITL rules ReDoS → `try/catch` on `RegExp` constructor
+- **S8**: Policy engine ReDoS → `try/catch` on `RegExp` constructor
+- **S9**: CORS wildcard `*` → default to request origin
+- **S10**: IPv6 bypass in IP allowlist → handle `::ffff:` prefix + `::1`
+
+### Code Quality Fixes (17)
+- **C1**: SDK `stream()` race condition → proper `notify()` pattern
+- **C2**: `AgentService` non-thread-safe → persona resolved per-request, not instance state
+- **C3**: Duplicate `A2AAdapterConfig` interface → removed
+- **C4**: `initOptionalModules()` errors silently swallowed → `console.warn()`
+- **C5**: `INIT_MARKER` wasted LLM API call → removed, engine initializes on first message
+- **C6**: Streaming cost estimation `chars/4` → `chars/3.75` (more accurate)
+- **C7**: Plugin `pre/post_llm_call` hooks never invoked → wired into ReAct loop
+- **C8**: `GitContext` spawned every ReAct iteration → cached per-session
+- **C10**: Knowledge graph naive entity extraction → 70+ stop words
+- **C11**: O(n²) co-occurrence relations → capped at 20 entities per message
+- **C12**: MCP `StdioTransport` resolves before child ready → 100ms startup delay
+- **C13**: Anthropic `tool_result` wrapped as user message → proper content block format
+- **C14**: Telemetry interval never `unref()`'d → added `.unref()`
+- **C15**: Debounced writes lose data on crash → `beforeExit` flush for KnowledgeGraph + AuthManager
+- **C16**: `/history` CLI broken → shows active persona + reset hint
+
+### Architecture Fixes (1)
+- **A1**: Zod removed from domain layer → `PersonaSchema` moved to adapter (file-persona-repository)
+  - Domain is now pure TypeScript interfaces — Clean Architecture compliant
+
+### Feature Fixes (2)
+- **GT**: Google Gemini + Ollama now pass tools parameter (function calling support)
+- **TP**: Topology typo `Decpose` → `Decompose`
+
+### Version Sync
+- All hardcoded version strings updated to 0.7.1 (dashboard, API server, CLI, health endpoints)
+- CLAUDE.md, README.md version references updated
+
+### Stats
+- **26 files changed**, +504 insertions, -106 deletions
+- **4 commits**: `e846efc`, `3413c59`, `29dc87b`, `9f8366f`
+- TypeScript: 0 errors, Rust: 0 clippy warnings, npm: 0 vulnerabilities
+- Full audit report: `docs/FULL_AUDIT_v0.7.0.md`
+
+---
+
+## [0.7.0] — 2026-06-21
 
 ### Added — 9 Production Features
 - **Human-in-the-Loop (HITL)** — `adapters/tools/hitl-manager.ts`

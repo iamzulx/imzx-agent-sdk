@@ -198,7 +198,7 @@ footer{text-align:center;color:#484f58;font-size:.7rem;margin-top:2rem;padding-t
 <div class="grid">
   <div class="card" style="grid-column:span 2"><h2>🔧 Skills</h2><div id="skills-table"></div></div>
 </div>
-<footer>imzx-agent-sdk v0.6.0 — auto-refreshes every 5s</footer>
+<footer>imzx-agent-sdk v0.7.1 — auto-refreshes every 5s</footer>
 <script nonce="${nonce}">
 // [C4 FIX] Safe clear — removes all child nodes without using innerHTML
 function clear(el){while(el.firstChild)el.removeChild(el.firstChild)}
@@ -289,14 +289,14 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (p === '/api/stats')    return json(res, 200, getStats());
   if (p === '/api/telemetry') return json(res, 200, getTelemetry());
   if (p === '/api/graph')    return json(res, 200, getGraph());
-  if (p === '/api/health')   return json(res, 200, { status: 'ok', uptime: process.uptime(), version: '0.6.0' });
+  if (p === '/api/health')   return json(res, 200, { status: 'ok', uptime: process.uptime(), version: '0.7.1' });
 
   json(res, 404, { error: 'Not found' });
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`\x1b[1m\x1b[34m╔══════════════════════════════════════╗\x1b[0m`);
-  console.log(`\x1b[1m\x1b[34m║   imzx Dashboard  v0.6.0            ║\x1b[0m`);
+  console.log(`\x1b[1m\x1b[34m║   imzx Dashboard  v0.7.1            ║\x1b[0m`);
   console.log(`\x1b[1m\x1b[34m╚══════════════════════════════════════╝\x1b[0m`);
   console.log(`\x1b[32m✓ Dashboard at http://${HOST}:${PORT}\x1b[0m`);
   console.log(`\x1b[2m  GET /              — Dashboard HTML`);

@@ -42,7 +42,7 @@ export class McpServerMode {
 
   constructor(config: McpServerModeConfig = {}) {
     this.name = config.name ?? 'imzx-agent-tools';
-    this.version = config.version ?? '0.6.0';
+    this.version = config.version ?? '0.7.1';
     this.logFile = config.logFile ?? null;
   }
 

@@ -21,7 +21,7 @@ Clean Architecture with 4 layers:
 - **Adapters** (`adapters/`): AgentEngine, LlmProvider, Tools, Memory, MCP, A2A, Plugins
 - **Interfaces** (`interfaces/`): CLI, REST API, SDK, Dashboard
 
-## Self-Improving System (v0.6.0)
+## Self-Improving System (v0.7.1)
 
 The agent learns and improves over time via 8 intelligence layers:
 
@@ -64,7 +64,7 @@ imzx stats
 imzx help / imzx --version
 ```
 
-## New Modules (v0.6.0)
+## New Modules (v0.7.1)
 
 | Module | File | Description |
 |--------|------|-------------|

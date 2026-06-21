@@ -595,7 +595,7 @@ export class CliHandler {
   }
 
   private showHelp(): void {
-    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.6.0${c.reset} — AI Agent Framework\n`);
+    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.7.1${c.reset} — AI Agent Framework\n`);
     console.log(`${c.bold}Usage:${c.reset}`);
     console.log(`  imzx run <prompt> [options]    Run agent with a prompt`);
     console.log(`  imzx chat [options]            Interactive REPL mode`);
