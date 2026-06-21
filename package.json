@@ -44,6 +44,7 @@
     "demo:python": "python3 interfaces/sdk/python/imzx.py"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "dotenv": "16.4.5",
     "pino": "8.19.0",
     "zod": "3.23.8"

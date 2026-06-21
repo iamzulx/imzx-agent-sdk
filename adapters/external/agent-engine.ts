@@ -228,6 +228,7 @@ export class AgentEngine implements AgentEnginePort {
 
       // Call LLM with retry
       this.state = 'thinking';
+      const llmCallStart = performance.now();
 
       // [C7 FIX] Run pre_llm_call plugin hook — allows plugins to modify messages before LLM call
       let hookMessages = [...this.messages];
@@ -245,6 +246,7 @@ export class AgentEngine implements AgentEnginePort {
         () => this.llm.complete(hookMessages, this.tools),
         'LLM call'
       );
+      const llmLatencyMs = performance.now() - llmCallStart;
 
       // [C7 FIX] Run post_llm_call plugin hook — allows plugins to inspect/modify response
       if (this.pluginManager) {
@@ -269,7 +271,7 @@ export class AgentEngine implements AgentEnginePort {
             provider: 'openrouter',
             inputTokens: response.usage.inputTokens,
             outputTokens: response.usage.outputTokens,
-            latencyMs: 0,
+            latencyMs: Math.round(llmLatencyMs),
             estimatedCostUsd: this.stats.totalCostUsd,
             success: true,
           });

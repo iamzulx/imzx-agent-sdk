@@ -81,4 +81,86 @@ export class WorkflowEngine {
     });
     return `## Workflow: ${workflow.name}\n${parts.join('\n')}`;
   }
+
+  /**
+   * [v0.8.0] Execute a workflow — runs steps in dependency order with retry + error handling.
+   * The `executor` callback runs each step's tool with its args and returns output.
+   */
+  async execute(
+    workflow: Workflow,
+    executor: (tool: string, args: Record<string, unknown>, stepName: string) => Promise<string>
+  ): Promise<{ results: StepResult[]; success: boolean }> {
+    const completed = new Set<string>();
+    const failed = new Set<string>();
+    const results: StepResult[] = [];
+    const outputs = new Map<string, string>();
+
+    const maxIterations = workflow.steps.length * 3; // safety limit
+    let iterations = 0;
+
+    while ((completed.size + failed.size) < workflow.steps.length && iterations < maxIterations) {
+      iterations++;
+      const executable = this.getExecutableSteps(workflow, completed, failed);
+
+      if (executable.length === 0) {
+        // No more executable steps — check for cycles or unresolvable deps
+        const remaining = workflow.steps.filter(s => !completed.has(s.id) && !failed.has(s.id));
+        for (const step of remaining) {
+          results.push({
+            step_id: step.id,
+            status: 'skipped',
+            output: 'Skipped: dependencies not met',
+            duration_ms: 0,
+            retries_used: 0,
+          });
+          failed.add(step.id);
+        }
+        break;
+      }
+
+      // Execute steps (sequentially within each level for determinism)
+      for (const step of executable) {
+        const start = performance.now();
+        let stepSuccess = false;
+        let output = '';
+        let retriesUsed = 0;
+
+        for (let attempt = 0; attempt <= step.max_retries; attempt++) {
+          retriesUsed = attempt;
+          try {
+            output = await executor(step.tool || 'run_command', step.args || {}, step.name);
+            stepSuccess = true;
+            break;
+          } catch (err) {
+            output = `Error (attempt ${attempt + 1}/${step.max_retries + 1}): ${(err as Error).message}`;
+            if (attempt < step.max_retries) {
+              // Exponential backoff
+              await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, attempt), 10000)));
+            }
+          }
+        }
+
+        const duration = performance.now() - start;
+        results.push({
+          step_id: step.id,
+          status: stepSuccess ? 'success' : 'failure',
+          output,
+          duration_ms: Math.round(duration),
+          retries_used: retriesUsed,
+        });
+
+        if (stepSuccess) {
+          completed.add(step.id);
+          outputs.set(step.id, output);
+        } else {
+          failed.add(step.id);
+        }
+      }
+    }
+
+    return {
+      results,
+      success: failed.size === 0,
+    };
+  }
 }

@@ -323,3 +323,123 @@ export class Orchestrator {
     return [...this.strategies.values()].map(s => ({ name: s.name, description: s.description }));
   }
 }
+
+// ─── Agent Factory (v0.8.0) ────────────────────────────────────────────────
+
+/**
+ * [v0.8.0] Agent Factory — spawn isolated agent instances for orchestration.
+ * Based on LangGraph/CrewAI patterns: templates + spawn + worker pool.
+ */
+export interface AgentTemplate {
+  role: string;
+  description: string;
+  execute: (task: string, context?: Record<string, unknown>) => Promise<string>;
+}
+
+export interface SpawnedAgent {
+  id: string;
+  template: AgentTemplate;
+  createdAt: string;
+  execute: (task: string, context?: Record<string, unknown>) => Promise<string>;
+}
+
+export class AgentFactory {
+  private templates = new Map<string, AgentTemplate>();
+  private activeAgents = new Map<string, SpawnedAgent>();
+
+  /** Register a reusable agent template. */
+  registerTemplate(name: string, template: AgentTemplate): void {
+    this.templates.set(name, template);
+  }
+
+  /** Spawn an isolated agent instance from a template. */
+  spawn(templateName: string, overrides?: Partial<AgentTemplate>): SpawnedAgent {
+    const template = this.templates.get(templateName);
+    if (!template) {
+      throw new Error(`Unknown agent template: ${templateName}. Available: ${[...this.templates.keys()].join(', ')}`);
+    }
+
+    const config = { ...template, ...overrides };
+    const agent: SpawnedAgent = {
+      id: `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      template: config,
+      createdAt: new Date().toISOString(),
+      execute: config.execute,
+    };
+
+    this.activeAgents.set(agent.id, agent);
+    return agent;
+  }
+
+  /** Spawn multiple agents for parallel execution (worker pool). */
+  spawnPool(templateName: string, count: number): SpawnedAgent[] {
+    const agents: SpawnedAgent[] = [];
+    for (let i = 0; i < count; i++) {
+      agents.push(this.spawn(templateName));
+    }
+    return agents;
+  }
+
+  /** Execute tasks in parallel across spawned agents (fan-out/fan-in). */
+  async executeParallel(
+    agents: SpawnedAgent[],
+    tasks: string[],
+    context?: Record<string, unknown>
+  ): Promise<Array<{ agentId: string; task: string; result: string; durationMs: number }>> {
+    const results = await Promise.allSettled(
+      agents.map(async (agent, i) => {
+        const start = performance.now();
+        const task = tasks[i] || tasks[tasks.length - 1]; // reuse last task if fewer tasks than agents
+        try {
+          const result = await agent.execute(task, context);
+          return {
+            agentId: agent.id,
+            task,
+            result,
+            durationMs: Math.round(performance.now() - start),
+          };
+        } catch (err) {
+          return {
+            agentId: agent.id,
+            task,
+            result: `Error: ${(err as Error).message}`,
+            durationMs: Math.round(performance.now() - start),
+          };
+        }
+      })
+    );
+
+    // Destroy agents after execution
+    for (const agent of agents) {
+      this.destroy(agent.id);
+    }
+
+    return results.map(r =>
+      r.status === 'fulfilled' ? r.value : {
+        agentId: 'unknown',
+        task: '',
+        result: `Error: ${r.reason}`,
+        durationMs: 0,
+      }
+    );
+  }
+
+  /** Destroy a spawned agent. */
+  destroy(agentId: string): void {
+    this.activeAgents.delete(agentId);
+  }
+
+  /** List active agents. */
+  listActive(): SpawnedAgent[] {
+    return [...this.activeAgents.values()];
+  }
+
+  /** List registered templates. */
+  listTemplates(): Array<{ name: string; role: string; description: string }> {
+    return [...this.templates.entries()].map(([name, t]) => ({
+      name,
+      role: t.role,
+      description: t.description,
+    }));
+  }
+}

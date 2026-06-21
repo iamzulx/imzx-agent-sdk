@@ -33,7 +33,7 @@ export interface PerformanceMetric {
 
 export interface ModificationLog {
   timestamp: string;
-  type: 'prompt_update' | 'tool_created' | 'workflow_optimized' | 'preference_learned';
+  type: 'prompt_update' | 'tool_created' | 'workflow_optimized' | 'preference_learned' | 'prompt_evolution';
   description: string;
   before: string;
   after: string;
@@ -303,5 +303,122 @@ export class SelfModifier {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(this.logPath, JSON.stringify(this.modificationLog, null, 2), 'utf-8');
     } catch {}
+  }
+
+  /**
+   * [v0.8.0] Prompt Evolution — generate improved prompt variants using a meta-LLM.
+   * Based on DSPy/HyperAgents patterns: a stronger model writes prompts for a weaker one.
+   *
+   * @param basePrompt The current system prompt to evolve
+   * @param llmProvider An LLM provider for generating variants
+   * @param taskExamples Optional examples for few-shot optimization
+   * @param variantCount Number of variants to generate
+   * @returns Array of evolved prompt variants with scores
+   */
+  async evolvePrompt(
+    basePrompt: string,
+    llmProvider: { complete: (messages: Array<{ role: string; content: string | null }>) => Promise<{ content: string | null }> },
+    taskExamples: Array<{ input: string; expected: string }> = [],
+    variantCount: number = 3
+  ): Promise<Array<{ prompt: string; strategy: string; score: number }>> {
+    const strategies = [
+      'Add chain-of-thought reasoning instructions (think step by step)',
+      'Add few-shot examples inline to guide output format',
+      'Restructure with XML tags for clear section separation',
+      'Add explicit output format constraints and negative examples',
+      'Add a role-playing persona to improve domain expertise',
+    ];
+
+    const variants: Array<{ prompt: string; strategy: string; score: number }> = [];
+
+    for (let i = 0; i < variantCount; i++) {
+      const strategy = strategies[i % strategies.length];
+      try {
+        const response = await llmProvider.complete([
+          {
+            role: 'system',
+            content: `You are an expert prompt engineer. Generate an IMPROVED variant of the given system prompt.
+Strategy: ${strategy}
+
+Rules:
+- Keep the core intent and capabilities of the original prompt
+- Apply the strategy to improve clarity, specificity, and output quality
+- Return ONLY the improved system prompt, nothing else`,
+          },
+          {
+            role: 'user',
+            content: `Original prompt:\n${basePrompt}\n\n${taskExamples.length > 0 ? `Example tasks:\n${taskExamples.map(e => `Input: ${e.input}\nExpected: ${e.expected}`).join('\n---\n')}` : ''}`,
+          },
+        ]);
+
+        const evolvedPrompt = response.content || basePrompt;
+
+        // Score: evaluate the variant against examples if available
+        let score = 0.5; // baseline
+        if (taskExamples.length > 0) {
+          score = await this.scorePromptVariant(evolvedPrompt, llmProvider, taskExamples);
+        }
+
+        variants.push({ prompt: evolvedPrompt, strategy, score });
+      } catch {
+        // LLM failed — return original with low score
+        variants.push({ prompt: basePrompt, strategy: `${strategy} (failed)`, score: 0 });
+      }
+    }
+
+    // Sort by score descending
+    variants.sort((a, b) => b.score - a.score);
+
+    // Record the evolution
+    this.modificationLog.push({
+      timestamp: new Date().toISOString(),
+      type: 'prompt_evolution',
+      description: `Evolved prompt: ${variantCount} variants, best score: ${variants[0]?.score.toFixed(2) || 0}`,
+      before: basePrompt.substring(0, 100),
+      after: variants[0]?.prompt.substring(0, 100) || '',
+      reverted: false,
+    });
+    this.persistModLog();
+
+    return variants;
+  }
+
+  /** Score a prompt variant by testing against examples. */
+  private async scorePromptVariant(
+    prompt: string,
+    llmProvider: { complete: (messages: Array<{ role: string; content: string | null }>) => Promise<{ content: string | null }> },
+    examples: Array<{ input: string; expected: string }>
+  ): Promise<number> {
+    let totalScore = 0;
+    const testCount = Math.min(examples.length, 3); // limit to 3 tests for cost
+
+    for (let i = 0; i < testCount; i++) {
+      try {
+        // Generate output with the evolved prompt
+        const output = await llmProvider.complete([
+          { role: 'system', content: prompt },
+          { role: 'user', content: examples[i].input },
+        ]);
+
+        // Judge quality: compare output to expected
+        const judge = await llmProvider.complete([
+          {
+            role: 'system',
+            content: 'Rate how well the output matches the expected answer. Score 0-100. Respond with just the number.',
+          },
+          {
+            role: 'user',
+            content: `Expected: ${examples[i].expected}\n\nActual output: ${output.content || ''}`,
+          },
+        ]);
+
+        const scoreNum = parseInt(judge.content || '50', 10);
+        totalScore += isNaN(scoreNum) ? 50 : Math.min(100, Math.max(0, scoreNum));
+      } catch {
+        totalScore += 25; // penalty for failure
+      }
+    }
+
+    return totalScore / testCount / 100; // normalize to 0-1
   }
 }

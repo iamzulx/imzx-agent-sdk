@@ -13,6 +13,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import * as cheerio from 'cheerio';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -198,38 +199,38 @@ export class CuaBrowser {
   }
 
   private extractContent(html: string, url: string): PageContent {
+    // [v0.8.0] Use cheerio for proper DOM parsing instead of regex
+    const $ = cheerio.load(html);
+
+    // Remove noise elements
+    $('script, style, nav, footer, header, noscript, iframe').remove();
+
     // Extract title
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim().slice(0, 200) : 'Untitled';
+    const title = $('title').text().trim().slice(0, 200) || 'Untitled';
 
-    // Extract links
-    const linkRegex = /<a[^>]+href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    // Extract links (limit 100)
     const links: Array<{ text: string; href: string }> = [];
-    let linkMatch;
-    while ((linkMatch = linkRegex.exec(html)) && links.length < 100) {
-      links.push({
-        text: linkMatch[2].replace(/<[^>]+>/g, '').trim().slice(0, 200),
-        href: linkMatch[1],
-      });
-    }
+    $('a[href]').each((_, el) => {
+      if (links.length >= 100) return false;
+      const href = $(el).attr('href') || '';
+      const text = $(el).text().trim().slice(0, 200);
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        links.push({ text, href });
+      }
+    });
 
-    // Extract metadata
+    // Extract metadata from meta tags
     const metadata: Record<string, string> = {};
-    const metaRegex = /<meta[^>]+(?:name|property)=["']([^"']+)["'][^>]+content=["']([^"']+)["']/gi;
-    let metaMatch;
-    while ((metaMatch = metaRegex.exec(html))) {
-      metadata[metaMatch[1]] = metaMatch[2];
-    }
+    $('meta[name], meta[property]').each((_, el) => {
+      const name = $(el).attr('name') || $(el).attr('property') || '';
+      const content = $(el).attr('content') || '';
+      if (name && content) metadata[name] = content;
+    });
 
-    // Strip HTML tags for text content
-    const content = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
+    // Extract main text content
+    const content = $('main, article, [role=main], body')
+      .first()
+      .text()
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 50_000);
