@@ -44,8 +44,15 @@
     "demo:python": "python3 interfaces/sdk/python/imzx.py"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.219.0",
+    "@opentelemetry/resources": "^2.8.0",
+    "@opentelemetry/sdk-node": "^0.219.0",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
     "cheerio": "^1.2.0",
     "dotenv": "16.4.5",
+    "neo4j-driver": "^6.1.0",
     "pino": "8.19.0",
     "zod": "3.23.8"
   },
