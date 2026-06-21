@@ -13,6 +13,7 @@
 
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import * as crypto from 'node:crypto';
 import type { AgentService, RunOptions } from '../../application/agent-service.js';
 import { getAuthManager } from '../../adapters/security/auth-manager.js';
 
@@ -49,13 +50,19 @@ function checkRateLimit(ip: string, maxRequests = 60, windowMs = 60_000): boolea
 }
 
 // --- [S8] API Authentication — Multi-Key with AuthManager ---
-function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
-  // Backward compatibility: single key from env
+// [C1 FIX] Enforce scoped API keys — checkScope() was never called before
+// [H5 FIX] Use timing-safe comparison for backward-compat key
+function checkAuth(req: IncomingMessage, apiKey?: string, requiredScope: string = 'full'): boolean {
   if (apiKey) {
     const authHeader = req.headers['authorization'];
     if (!authHeader) return false;
     const token = authHeader.replace(/^Bearer\s+/i, '');
-    if (token === apiKey) return true;
+    // Constant-time comparison to prevent timing attacks
+    if (token.length === apiKey.length) {
+      const a = Buffer.from(token);
+      const b = Buffer.from(apiKey);
+      if (crypto.timingSafeEqual(a, b)) return true;
+    }
     // Also try AuthManager for scoped keys
   }
 
@@ -64,7 +71,12 @@ function checkAuth(req: IncomingMessage, apiKey?: string): boolean {
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const key = authManager.validateKey(token, 'api', req.socket.remoteAddress || 'unknown');
-  return key !== null;
+  if (!key) return false;
+
+  // Enforce scoped API keys
+  const scopes = Array.isArray(key.scope) ? key.scope : [key.scope];
+  if (scopes.includes('full')) return true;
+  return scopes.includes(requiredScope);
 }
 
 export interface ServerOptions {
@@ -103,14 +115,19 @@ export async function createServer(agentService: AgentService, options: ServerOp
     }
 
     // [S8] API authentication (skip for health check)
-    if (url.pathname !== '/api/health' && !checkAuth(req, options.apiKey)) {
+    // [C1 FIX] Scope-based auth — POST endpoints require 'write' or 'full', GET requires 'read' or 'full'
+    const requiredScope = (method === 'POST') ? 'write' : 'read';
+    if (url.pathname !== '/api/health' && !checkAuth(req, options.apiKey, requiredScope)) {
       return jsonResponse(res, 401, { error: 'Unauthorized. Set Authorization: Bearer <key> header.' });
     }
 
     // CORS headers
-    // [S9 FIX] Default CORS to request origin — wildcard only if explicitly configured
-    const allowedOrigin = process.env.IMZX_CORS_ORIGIN || req.headers.origin || 'null';
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    // [H8 FIX] CORS — do NOT reflect request origin. Default to blocking cross-origin requests.
+    // Set IMZX_CORS_ORIGIN=* explicitly if you need wildcard (not recommended for production).
+    const allowedOrigin = process.env.IMZX_CORS_ORIGIN || '';
+    if (allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 

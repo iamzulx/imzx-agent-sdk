@@ -188,8 +188,11 @@ export class CuaBrowser {
       const response = await fetch(parsed.href, {
         headers: { 'User-Agent': this.config.userAgent },
         signal: controller.signal,
-        redirect: 'follow',
+        redirect: 'manual',  // [H6 FIX] Do not follow redirects — prevent SSRF via redirect chains
       });
+      if (response.status >= 300 && response.status < 400) {
+        throw new Error('Redirect blocked for security (SSRF protection)');
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       const text = await response.text();
       return text.slice(0, 5 * 1024 * 1024); // 5MB limit

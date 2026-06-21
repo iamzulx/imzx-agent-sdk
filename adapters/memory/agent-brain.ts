@@ -197,6 +197,8 @@ export class AgentBrain {
   processUserMessage(message: string): {
     isCorrection: boolean;
     preferencesDetected: boolean;
+    blocked: boolean;
+    blockReason?: string;
   } {
     const isCorrection = this.memory.detectCorrection(message);
     const before = this.memory.stats().total;
@@ -207,14 +209,19 @@ export class AgentBrain {
     this.graph.processMessage(message);
 
     // Security guardrails — check for injection attempts
+    // [H1 FIX] Actually block execution when injection is detected (was only logging before)
     const inputCheck = this.guardrails.checkInput(message);
+    let blocked = false;
     if (!inputCheck.safe) {
       this.memory.save('correction', `security_${Date.now()}`, `Blocked: ${inputCheck.reason}`, { tags: ['security', inputCheck.category || 'unknown'], importance: 10 });
+      blocked = true;
     }
 
     return {
       isCorrection,
       preferencesDetected: after > before,
+      blocked,
+      blockReason: blocked ? inputCheck.reason : undefined,
     };
   }
 

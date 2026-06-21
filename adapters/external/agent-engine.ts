@@ -200,7 +200,11 @@ export class AgentEngine implements AgentEnginePort {
 
   async run(prompt: string): Promise<string> {
     // [Brain] Process user message for learning signals
-    this.brain.processUserMessage(prompt);
+    const brainResult = this.brain.processUserMessage(prompt);
+    // [H1 FIX] Block execution if guardrails detected injection
+    if (brainResult.blocked) {
+      return `⚠️ Request blocked by security guardrails: ${brainResult.blockReason}`;
+    }
     this.brain.onTaskStart();
 
     this.messages.push({ role: 'user', content: prompt });
@@ -230,30 +234,31 @@ export class AgentEngine implements AgentEnginePort {
       this.state = 'thinking';
       const llmCallStart = performance.now();
 
-      // [C7 FIX] Run pre_llm_call plugin hook — allows plugins to modify messages before LLM call
-      let hookMessages = [...this.messages];
+      // [C7 FIX] Run pre_llm_call plugin hook — allows plugins to inspect messages (read-only)
+      // [C5 FIX] Messages are deep-copied to prevent plugins from mutating the original conversation
       if (this.pluginManager) {
         try {
-          const preCtx = await this.pluginManager.runHook('pre_llm_call', {
+          const hookMessages = this.messages.map(m => ({ ...m, content: m.content }));
+          await this.pluginManager.runHook('pre_llm_call', {
             hook: 'pre_llm_call',
             messages: hookMessages,
           });
-          if (preCtx.messages) hookMessages = preCtx.messages as LlmMessage[];
+          // Note: hookMessages is NOT used — plugins can only inspect, not modify
         } catch { /* hook errors don't block LLM call */ }
       }
 
       const response = await this.withRetry(
-        () => this.llm.complete(hookMessages, this.tools),
+        () => this.llm.complete(this.messages, this.tools),
         'LLM call'
       );
       const llmLatencyMs = performance.now() - llmCallStart;
 
-      // [C7 FIX] Run post_llm_call plugin hook — allows plugins to inspect/modify response
+      // [C7 FIX] Run post_llm_call plugin hook — allows plugins to inspect response (read-only)
       if (this.pluginManager) {
         try {
           await this.pluginManager.runHook('post_llm_call', {
             hook: 'post_llm_call',
-            messages: hookMessages,
+            messages: this.messages.map(m => ({ ...m })),
             response: { content: response.content, toolCalls: response.toolCalls },
           });
         } catch { /* hook errors don't block response */ }

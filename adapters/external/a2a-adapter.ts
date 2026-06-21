@@ -410,6 +410,13 @@ export class A2AAdapter {
 
     // [S4 FIX] HMAC signature verification
     const typedBody = body as { id?: string | number | null; method?: string };
+    if (this.requireHmac && !this.hmacSecret) {
+      // [H9 FIX] Reject requests when HMAC is required but no secret is configured
+      // Before: HMAC was computed with empty string, allowing anyone to forge valid HMACs
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'HMAC required but no secret configured' }, id: null }));
+      return;
+    }
     if (this.hmacSecret || this.requireHmac) {
       const hmacValid = verifyHmacSignature(req, rawBody, this.hmacSecret ?? '');
       if (this.requireHmac && !hmacValid) {

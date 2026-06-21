@@ -168,7 +168,13 @@ async function requestApproval(toolName: string, args: Record<string, unknown>):
 
   // Check if stdin is interactive
   if (!process.stdin.isTTY) {
-    return true; // Non-interactive: auto-approve
+    // [C2 FIX] Do NOT auto-approve in non-interactive/API mode unless explicitly configured
+    // Before: returned true (auto-approve), allowing any API user to run dangerous tools
+    // Now: only auto-approve if IMZX_AUTO_APPROVE is explicitly set
+    if (process.env.IMZX_AUTO_APPROVE === 'true' || process.env.IMZX_AUTO_APPROVE === '1') {
+      return true;
+    }
+    return false; // Block dangerous tools in non-interactive mode
   }
 
   const argsPreview = JSON.stringify(args).substring(0, 200);
@@ -189,11 +195,12 @@ async function requestApproval(toolName: string, args: Record<string, unknown>):
 
 const ALLOWED_COMMANDS = [
   'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'find', 'pwd', 'echo', 'date',
-  'git', 'npm', 'npx', 'node', 'tsx', 'tsc',
+  'git', 'npm',
   'cargo', 'rustc', 'rustfmt', 'clippy',
-  'python3', 'pip',
   'curl', 'wget',
 ];
+// [C4 FIX] Removed node, npx, python3, pip, tsx, tsc from allowlist
+// These allowed arbitrary code download+execution (e.g., node -e "...", npx malicious-pkg)
 
 function isCommandAllowed(command: string): boolean {
   const firstWord = command.trim().split(/\s+/)[0];
@@ -214,10 +221,33 @@ function smartTruncate(text: string, maxLen: number): string {
 
 function sanitizePath(p: string): string {
   const resolved = path.resolve(p);
-  const blocked = ['/etc/shadow', '/etc/passwd', '/proc/self', '/dev'];
+  // [H7 FIX] Expanded blocklist + symlink resolution
+  // Resolve symlinks to prevent symlink-based bypasses
+  let realPath = resolved;
+  try { realPath = require('node:fs').realpathSync(resolved); } catch { /* file doesn't exist yet */ }
+
+  const blocked = [
+    '/etc/shadow', '/etc/passwd', '/etc/hosts', '/etc/sudoers',
+    '/etc/ssh', '/etc/ssl/private',
+    '/proc/self', '/proc/1', '/proc/sys', '/proc/kcore',
+    '/sys/', '/dev/', '/boot/',
+    '/root/.ssh', '/root/.gnupg', '/root/.aws', '/root/.kube',
+  ];
+  // Also block user-specific sensitive paths
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  if (home) {
+    blocked.push(
+      path.join(home, '.ssh'),
+      path.join(home, '.aws'),
+      path.join(home, '.gnupg'),
+      path.join(home, '.kube'),
+      path.join(home, '.npmrc'),
+      path.join(home, '.env'),
+    );
+  }
   for (const b of blocked) {
-    if (resolved.startsWith(b)) {
-      throw new Error(`Access denied: ${resolved}`);
+    if (realPath.startsWith(b) || resolved.startsWith(b)) {
+      throw new Error(`Access denied: path is in a sensitive location`);
     }
   }
   return resolved;
@@ -446,9 +476,9 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
 
     case 'run_command': {
       const command = args.command as string;
-      // [C3 FIX] Block shell metacharacters
-      if (/[;|`$()&><]/.test(command)) {
-        return 'Error: Shell metacharacters (;|`$&><) are blocked for security.';
+      // [C3 FIX] Block shell metacharacters INCLUDING newlines (previous filter missed \n\r)
+      if (/[;|`$()&><\n\r\\{}[\]~]/.test(command)) {
+        return 'Error: Shell metacharacters (;|`$()&><\\n\\r\\\\{}[]~) are blocked for security.';
       }
       if (!isCommandAllowed(command)) {
         return `Error: Command not allowed. Allowed: ${ALLOWED_COMMANDS.join(', ')}`;
@@ -518,11 +548,16 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         return 'Error: Invalid URL.';
       }
 
+      // [H6 FIX] Disable redirect following to prevent SSRF via redirect chains
       try {
         const response = await fetch(url, {
           headers: { 'User-Agent': 'imzx-agent-sdk/0.7.1' },
           signal: AbortSignal.timeout(15_000),
+          redirect: 'manual',  // [H6 FIX] Do not follow redirects
         });
+        if (response.status >= 300 && response.status < 400) {
+          return `HTTP ${response.status}: Redirect blocked for security (SSRF protection)`;
+        }
         if (!response.ok) return `HTTP ${response.status}: ${response.statusText}`;
         const text = await response.text();
         return smartTruncate(text, 50000);
@@ -548,14 +583,14 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       try {
         await fs.writeFile(tmpFile, code, 'utf-8');
         const cmd = lang === 'python' ? `python3 ${tmpFile}` : `node ${tmpFile}`;
-        // [S3 FIX] Strip sensitive env vars — only pass safe subset
-        const SENSITIVE_KEYS = ['API_KEY', 'SECRET', 'TOKEN', 'PASSWORD', 'PRIVATE', 'CREDENTIAL'];
-        const safeEnv: Record<string, string> = { PATH: process.env.PATH || '', HOME: process.env.HOME || '', TERM: 'dumb', LANG: process.env.LANG || 'en_US.UTF-8' };
-        for (const [k, v] of Object.entries(process.env)) {
-          if (v && !SENSITIVE_KEYS.some(sk => k.toUpperCase().includes(sk))) {
-            safeEnv[k] = v;
-          }
-        }
+        // [C6 FIX] Allowlist env vars instead of blacklist — only pass safe subset
+        const safeEnv: Record<string, string> = {
+          PATH: process.env.PATH || '',
+          HOME: '/tmp',  // Isolated home
+          TMPDIR: '/tmp',
+          TERM: 'dumb',
+          LANG: process.env.LANG || 'en_US.UTF-8',
+        };
         const output = execSync(cmd, {
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
