@@ -15,7 +15,7 @@
  * [C4 FIX] Content Security Policy with nonce, X-Content-Type-Options, X-Frame-Options headers
  */
 
-import { createServer, type IncomingMessage, type ServerResponse, createServer as createHttpsServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAuthManager } from '../../adapters/security/auth-manager.js';

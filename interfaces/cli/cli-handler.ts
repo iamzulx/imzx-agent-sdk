@@ -1,4 +1,3 @@
-const INIT_MARKER = '##IMZX_INIT##';
 /**
  * CLI Handler — full-featured command-line interface.
  * v2.0 — Subcommands, streaming, interactive REPL, colored output.
@@ -144,7 +143,7 @@ export class CliHandler {
 
     // Banner
     console.log(`${c.bold}${c.blue}╔══════════════════════════════════════╗${c.reset}`);
-    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.5.0           ║${c.reset}`);
+    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.7.1           ║${c.reset}`);
     console.log(`${c.bold}${c.blue}╚══════════════════════════════════════╝${c.reset}`);
     console.log(`${c.dim}Persona: ${personaName} | Streaming: ${runOptions.streaming ? 'ON' : 'OFF'}${c.reset}`);
     console.log(`${c.dim}Budget: ${runOptions.budget?.maxTokens ?? '500K'} tokens, $${runOptions.budget?.budgetUsd ?? '5.00'}${c.reset}`);
@@ -602,7 +601,7 @@ export class CliHandler {
     console.log(`  imzx serve [options]           Start REST API server`);
     console.log(`  imzx dashboard [options]       Start Web UI dashboard`);
     console.log(`  imzx auth <command>            Manage API keys`);
-    console.log(`  imxmcp connect <server>        Connect MCP server`);
+    console.log(`  imzx mcp connect <server>       Connect MCP server`);
     console.log(`  imzx personas list             List available personas`);
     console.log(`  imzx stats                     Show session statistics`);
     console.log(`  imzx help                      Show this help\n`);

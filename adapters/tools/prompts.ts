@@ -41,7 +41,7 @@ Be concise. Act first, explain only if needed. Use tools to discover information
  * Build a system prompt from a persona prompt + tool guidance.
  */
 export function buildSystemPrompt(personaPrompt?: string): string {
-  if (!personaPrompt || personaPrompt === '##IMZX_INIT##') {
+  if (!personaPrompt) {
     return DEFAULT_SYSTEM_PROMPT;
   }
   return `${personaPrompt}\n\n${TOOL_GUIDANCE_PROMPT}`;

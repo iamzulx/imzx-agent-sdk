@@ -10,7 +10,7 @@
  *   - Task type allowlist (only registered handlers accepted)
  */
 
-import { createServer, type IncomingMessage, type ServerResponse, type Server, createServer as createHttpsServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getAuthManager } from '../security/auth-manager.js';

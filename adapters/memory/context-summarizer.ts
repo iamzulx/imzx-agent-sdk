@@ -36,7 +36,7 @@ export class ContextSummarizer {
       preserved_files: files,
       preserved_decisions: decisions,
       timestamp: new Date().toISOString(),
-      token_estimate: Math.floor(parts.join('').length / 4),
+      token_estimate: Math.ceil(parts.join('').length / 3.75),
     };
 
     this.summaries.push(summary);
@@ -95,7 +95,7 @@ export class ContextSummarizer {
       preserved_files: allFiles,
       preserved_decisions: allDecisions,
       timestamp: new Date().toISOString(),
-      token_estimate: Math.floor(allFacts.join('').length / 4),
+      token_estimate: Math.ceil(allFacts.join('').length / 3.75),
     };
   }
 }

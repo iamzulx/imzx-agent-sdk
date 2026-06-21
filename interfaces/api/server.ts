@@ -11,7 +11,7 @@
  *   WS   /ws                 — WebSocket for bidirectional streaming
  */
 
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse, type Server as HttpServer, createServer as createHttpsServer } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import type { AgentService, RunOptions } from '../../application/agent-service.js';
 import { getAuthManager } from '../../adapters/security/auth-manager.js';
@@ -210,8 +210,7 @@ export async function createServer(agentService: AgentService, options: ServerOp
 
         const lastMessage = messages[messages.length - 1];
         const prompt = lastMessage?.content || '';
-        const systemMessage = messages.find((m: any) => m.role === 'system');
-        const persona = 'general-purpose'; // Could map from model param
+        const persona = 'general-purpose'; // Could map from system message or model param
 
         if (stream) {
           // SSE streaming — OpenAI-compatible format
@@ -275,8 +274,6 @@ export async function createServer(agentService: AgentService, options: ServerOp
       return jsonResponse(res, 404, { error: `Not found: ${method} ${url.pathname}` });
 
     } catch (err: any) {
-      console.error(`[API Error] ${err.message}`);
-      // [H8 FIX] Don't leak internal details
       console.error(`[API Error] ${err.message}`);
       return jsonResponse(res, 500, { error: 'Internal server error' });
     }

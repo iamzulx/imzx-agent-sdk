@@ -321,7 +321,7 @@ async function webSearch(query: string): Promise<string> {
     const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; imzx-agent-sdk/0.4.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; imzx-agent-sdk/0.7.1)',
         'Accept': 'text/html',
       },
       signal: AbortSignal.timeout(10_000),
@@ -520,7 +520,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
 
       try {
         const response = await fetch(url, {
-          headers: { 'User-Agent': 'imzx-agent-sdk/0.4.0' },
+          headers: { 'User-Agent': 'imzx-agent-sdk/0.7.1' },
           signal: AbortSignal.timeout(15_000),
         });
         if (!response.ok) return `HTTP ${response.status}: ${response.statusText}`;
