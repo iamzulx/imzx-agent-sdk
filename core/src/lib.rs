@@ -1,16 +1,11 @@
 // Author: Iamzulx
 // SPDX-License-Identifier: MIT
 //
-// Core library — Python (PyO3) and TypeScript (NAPI-RS) bindings.
-// v2.0 — Added hooks, subagents, streaming, context management, MCP.
+// Core library — TypeScript (NAPI-RS) and Python (PyO3) bindings.
+// v0.6.0 — Feature-gated bindings, removed unused deps, added tests.
 // Security: M1 fix (napi::Result error propagation).
 
-use napi::Status;
-use napi_derive::napi;
-use once_cell::sync::Lazy;
-use pyo3::prelude::*;
-use std::sync::Arc;
-use tokio::runtime::Runtime;
+#![deny(unsafe_code)]
 
 pub mod agent;
 pub mod context_manager;
@@ -43,154 +38,106 @@ pub use subagent::{Subagent, SubagentOrchestrator, SubagentResult, SubagentTask}
 pub use tools::ToolRegistry;
 pub use types::*;
 
-// Global Tokio Runtime
-pub static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to initialize global Tokio runtime")
-});
+// --- Global Tokio Runtime (lazy, cleaned up on drop) ---
+use std::sync::OnceLock;
 
-// --- Python Bindings (PyO3) ---
-#[pymodule]
-fn imzx_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyAgent>()?;
-    Ok(())
+pub fn runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to initialize global Tokio runtime")
+    })
 }
 
-#[pyclass]
-pub struct PyAgent {
-    pub inner: Agent,
-}
+// --- Python Bindings (PyO3) — feature-gated ---
+#[cfg(feature = "python-binding")]
+mod python_bindings {
+    use super::*;
+    use pyo3::prelude::*;
 
-#[pymethods]
-impl PyAgent {
-    #[new]
-    fn new(name: String, description: String, prompt: String) -> Self {
-        PyAgent {
-            inner: Agent::new(name, description, prompt),
-        }
-    }
-
-    #[allow(clippy::useless_conversion)]
-    fn run(&mut self, input: String) -> PyResult<String> {
-        let result = RUNTIME
-            .block_on(async { self.inner.run(&input).await })
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-        Ok(result)
-    }
-}
-
-// --- TypeScript Bindings (NAPI-RS) ---
-
-/// NAPI-exposed agent for TypeScript.
-#[napi]
-pub struct TsAgent {
-    inner: Arc<tokio::sync::Mutex<Agent>>,
-}
-
-#[napi]
-impl TsAgent {
-    #[napi(constructor)]
-    pub fn new(name: String, description: String, prompt: String) -> Self {
-        TsAgent {
-            inner: Arc::new(tokio::sync::Mutex::new(Agent::new(
-                name,
-                description,
-                prompt,
-            ))),
-        }
-    }
-
-    /// Run the agent with a user prompt. Returns the final response.
-    #[napi]
-    pub async fn run(&self, prompt: String) -> napi::Result<String> {
-        let mut agent = self.inner.lock().await;
-        agent
-            .run(&prompt)
-            .await
-            .map_err(|e| napi::Error::new(Status::GenericFailure, e.to_string()))
-    }
-
-    /// Get current agent state as a JSON string.
-    #[napi]
-    pub async fn get_state(&self) -> napi::Result<String> {
-        let agent = self.inner.lock().await;
-        let state = format!("{:?}", agent.state());
-        Ok(state)
-    }
-
-    /// Get session statistics as a JSON string.
-    #[napi]
-    pub async fn get_stats(&self) -> napi::Result<String> {
-        let agent = self.inner.lock().await;
-        let stats = agent.stats();
-        Ok(format!(
-            r#"{{"total_input_tokens": {}, "total_output_tokens": {}, "total_cost_usd": {:.6}, "request_count": {}}}"#,
-            stats.total_input_tokens,
-            stats.total_output_tokens,
-            stats.total_cost_usd,
-            stats.request_count
-        ))
-    }
-
-    /// Set budget limits. Validates inputs to reject NaN/negative values.
-    #[napi]
-    pub async fn set_budget(&self, max_tokens: f64, budget_usd: f64) -> napi::Result<()> {
-        // [C6 FIX] Validate inputs — reject NaN, negative, and non-finite values
-        if max_tokens.is_nan() || max_tokens < 0.0 || !max_tokens.is_finite() {
-            return Err(napi::Error::new(
-                Status::InvalidArg,
-                "max_tokens must be a non-negative finite number",
-            ));
-        }
-        if budget_usd.is_nan() || budget_usd < 0.0 || !budget_usd.is_finite() {
-            return Err(napi::Error::new(
-                Status::InvalidArg,
-                "budget_usd must be a non-negative finite number",
-            ));
-        }
-        let mut agent = self.inner.lock().await;
-        // [A3 FIX] Use saturating cast — reject values that don't fit in u64
-        if max_tokens > u64::MAX as f64 {
-            return Err(napi::Error::new(
-                Status::InvalidArg,
-                "max_tokens exceeds u64 range",
-            ));
-        }
-        agent.set_budget(max_tokens as u64, budget_usd);
+    #[pymodule]
+    fn imzx_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add_class::<PyAgent>()?;
         Ok(())
     }
 
-    /// Get the agent's audit log (if AuditHook is registered).
-    #[napi]
-    pub async fn get_audit_log(&self) -> napi::Result<String> {
-        let _agent = self.inner.lock().await;
-        // Return the hook registry's audit entries if available
-        Ok(r#"{"message": "Audit log requires AuditHook registration"}"#.to_string())
+    #[pyclass]
+    pub struct PyAgent {
+        pub inner: Agent,
+    }
+
+    #[pymethods]
+    impl PyAgent {
+        #[new]
+        fn new(name: String, description: String, prompt: String) -> Self {
+            PyAgent {
+                inner: Agent::new(name, description, prompt),
+            }
+        }
+
+        fn run(&mut self, input: String) -> PyResult<String> {
+            let result = runtime()
+                .block_on(async { self.inner.run(&input).await })
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            Ok(result)
+        }
     }
 }
 
-/// Subagent orchestrator exposed to TypeScript.
-#[napi]
-pub struct TsSubagentOrchestrator {
-    #[allow(dead_code)]
-    inner: SubagentOrchestrator,
-}
+// --- TypeScript Bindings (NAPI-RS) — feature-gated ---
+#[cfg(feature = "napi-binding")]
+mod napi_bindings {
+    use super::*;
+    use napi::Status;
+    use napi_derive::napi;
+    use std::sync::Arc;
 
-#[napi]
-impl TsSubagentOrchestrator {
-    #[napi(constructor)]
-    pub fn new(default_model: String, max_concurrent: f64) -> Self {
-        // NOTE: This creates an orchestrator with an empty ModelRegistry.
-        // In production, the TS side should register providers before use.
-        TsSubagentOrchestrator {
-            inner: SubagentOrchestrator::new(
-                ModelRegistry::new(),
-                default_model,
-                max_concurrent as usize,
-            ),
+    /// NAPI-exposed agent for TypeScript.
+    #[napi]
+    pub struct TsAgent {
+        inner: Arc<tokio::sync::Mutex<Agent>>,
+    }
+
+    #[napi]
+    impl TsAgent {
+        #[napi(constructor)]
+        pub fn new(name: String, description: String, prompt: String) -> Self {
+            TsAgent {
+                inner: Arc::new(tokio::sync::Mutex::new(Agent::new(
+                    name,
+                    description,
+                    prompt,
+                ))),
+            }
+        }
+
+        /// Run the agent with a user prompt. Returns the final response.
+        #[napi]
+        pub async fn run(&self, input: String) -> napi::Result<String> {
+            let mut agent = self
+                .inner
+                .lock()
+                .await;
+            agent
+                .run(&input)
+                .await
+                .map_err(|e| napi::Error::new(Status::GenericFailure, e.to_string()))
+        }
+
+        /// Get current agent state as a string.
+        #[napi]
+        pub async fn state(&self) -> String {
+            let agent = self.inner.lock().await;
+            agent.state().to_string()
+        }
+
+        /// Get session statistics as JSON.
+        #[napi]
+        pub async fn stats_json(&self) -> String {
+            let agent = self.inner.lock().await;
+            serde_json::to_string(agent.stats()).unwrap_or_else(|_| "{}".to_string())
         }
     }
 }
