@@ -125,13 +125,92 @@ export class RAGPipeline {
           path: this.documents.get(chunk.docId)?.path || '',
           chunk: chunk.chunk,
           score,
-          source: 'hybrid',
+          source: 'vector',
         });
       }
     }
 
     results.sort((a, b) => b.score - a.score);
     return results.slice(0, maxResults);
+  }
+
+  /**
+   * [v0.8.0] Hybrid search — combines TF-IDF vector search with knowledge graph retrieval.
+   * Implements GraphRAG pattern: entity extraction → graph traversal → hybrid ranking.
+   */
+  searchHybrid(
+    query: string,
+    knowledgeGraph: {
+      searchEntities: (query: string, limit?: number) => Array<{ name: string; type: string; properties: Record<string, string>; relations: Array<{ target: string; type: string }> }>;
+    },
+    maxResults: number = 5
+  ): RetrievalResult[] {
+    // Step 1: TF-IDF vector search
+    const vectorResults = this.search(query, maxResults * 2);
+
+    // Step 2: Knowledge graph entity search
+    const graphEntities = knowledgeGraph.searchEntities(query, 10);
+    const graphContextChunks: string[] = [];
+    const graphContextMap = new Map<string, string[]>();
+
+    for (const entity of graphEntities) {
+      // Build context string from entity + relations
+      const relDescriptions = entity.relations
+        .map(r => `${entity.name} --[${r.type}]--> ${r.target}`)
+        .join('; ');
+      const contextLine = `${entity.name} (${entity.type}): ${relDescriptions || 'no relations'}`;
+      graphContextChunks.push(contextLine);
+
+      // Map entity name to relevant chunk indices
+      const entityLower = entity.name.toLowerCase();
+      for (let i = 0; i < this.chunks.length; i++) {
+        if (this.chunks[i].chunk.toLowerCase().includes(entityLower)) {
+          if (!graphContextMap.has(String(i))) graphContextMap.set(String(i), []);
+          graphContextMap.get(String(i))!.push(contextLine);
+        }
+      }
+    }
+
+    // Step 3: Hybrid ranking — boost vector results that have graph context
+    const hybridResults: RetrievalResult[] = [];
+
+    for (const vr of vectorResults) {
+      const chunkIndex = this.chunks.findIndex(c => c.docId === vr.documentId && c.chunk === vr.chunk);
+      const graphContext = graphContextMap.get(String(chunkIndex));
+
+      if (graphContext && graphContext.length > 0) {
+        // Boost score when both vector AND graph match
+        const boostFactor = 1 + Math.min(graphContext.length * 0.2, 0.5);
+        hybridResults.push({
+          ...vr,
+          score: vr.score * boostFactor,
+          source: 'hybrid',
+          graphContext,
+        });
+      } else {
+        hybridResults.push({ ...vr, source: 'vector' });
+      }
+    }
+
+    // Step 4: Add pure graph results (chunks that matched entities but not vectors)
+    if (graphContextChunks.length > 0) {
+      const existingChunkTexts = new Set(hybridResults.map(r => r.chunk));
+      for (const gc of graphContextChunks.slice(0, 3)) {
+        if (!existingChunkTexts.has(gc)) {
+          hybridResults.push({
+            documentId: 'graph',
+            path: 'knowledge-graph',
+            chunk: gc,
+            score: 0.3, // base graph score
+            source: 'graph',
+            graphContext: [gc],
+          });
+        }
+      }
+    }
+
+    hybridResults.sort((a, b) => b.score - a.score);
+    return hybridResults.slice(0, maxResults);
   }
 
   /** Get index stats. */
