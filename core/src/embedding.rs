@@ -42,7 +42,7 @@ impl LocalEmbedder {
 
         // Build vocabulary (top N by document frequency)
         let mut freq_vec: Vec<(String, usize)> = doc_freq.into_iter().collect();
-        freq_vec.sort_by(|a, b| b.1.cmp(&a.1));
+        freq_vec.sort_by_key(|b| std::cmp::Reverse(b.1));
         freq_vec.truncate(self.max_vocab);
 
         self.vocab.clear();

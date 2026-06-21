@@ -947,6 +947,12 @@ pub struct ToolRegistry {
     validator: Option<Arc<dyn ToolCallValidator>>,
 }
 
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
