@@ -52,6 +52,7 @@ export class KnowledgeGraph {
     const dir = baseDir || path.join(process.cwd(), '.imzx');
     this.filePath = path.join(dir, 'knowledge-graph.json');
     this.loadFromDisk();
+    KnowledgeGraph._instances.add(this); // [C15 FIX] Track for exit flush
   }
 
   // --- Entity CRUD ---
@@ -232,8 +233,24 @@ export class KnowledgeGraph {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    this.dirty = true;
-    this.persist();
+    if (this.dirty) {
+      this.persist();
+    }
+  }
+
+  // [C15 FIX] Register process exit handler to flush pending writes
+  private static _exitHandlerRegistered = false;
+  private static _instances: Set<KnowledgeGraph> = new Set();
+
+  static {
+    if (!KnowledgeGraph._exitHandlerRegistered) {
+      KnowledgeGraph._exitHandlerRegistered = true;
+      process.on('beforeExit', () => {
+        for (const instance of KnowledgeGraph._instances) {
+          instance.flush();
+        }
+      });
+    }
   }
 
   // --- Search ---

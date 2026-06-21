@@ -189,6 +189,21 @@ export class AuthManager {
     }, 1_000);
   }
 
+  // [C15 FIX] Flush pending key saves on process exit
+  flushKeys(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (this.dirty) {
+      try {
+        mkdirSync(dirname(this.keysPath), { recursive: true });
+        writeFileSync(this.keysPath, JSON.stringify([...this.keys.values()], null, 2), 'utf-8');
+        this.dirty = false;
+      } catch { /* ignore */ }
+    }
+  }
+
   // ── Key Management ───────────────────────────────────────────────────────
 
   /** Generate a new scoped API key. Returns raw key ONCE — never stored. */
@@ -313,8 +328,16 @@ export class AuthManager {
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 let _instance: AuthManager | null = null;
+let _exitRegistered = false;
 
 export function getAuthManager(config?: AuthManagerConfig): AuthManager {
-  if (!_instance) _instance = new AuthManager(config);
+  if (!_instance) {
+    _instance = new AuthManager(config);
+    // [C15 FIX] Flush pending key saves on process exit
+    if (!_exitRegistered) {
+      _exitRegistered = true;
+      process.on('beforeExit', () => { _instance?.flushKeys(); });
+    }
+  }
   return _instance;
 }

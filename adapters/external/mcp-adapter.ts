@@ -102,8 +102,10 @@ class StdioTransport implements McpTransport {
         }
       });
 
+      // [C12 FIX] Wait for child process to be ready before resolving
       this.connected = true;
-      resolve();
+      // Give the child process a tick to start, then resolve
+      setTimeout(() => resolve(), 100);
     });
   }
 

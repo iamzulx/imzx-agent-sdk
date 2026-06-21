@@ -208,7 +208,8 @@ export class CliHandler {
 
     let currentPersona = persona;
 
-    const initResult = await this.agentService.execute(currentPersona, INIT_MARKER);
+    // [C5 FIX] Don't waste LLM API call on INIT_MARKER — engine initializes on first real message
+    // No pre-initialization needed; the first user prompt will trigger engine initialization.
 
     // Auto-inject git + project context
     try {
@@ -268,9 +269,9 @@ export class CliHandler {
             console.log(`${c.cyan}Use /reset to clear conversation history.${c.reset}`);
             break;
           case '/reset':
-            // Re-initialize to clear history
-            await this.agentService.execute(currentPersona, INIT_MARKER);
-            console.log(`${c.yellow}Conversation history cleared.${c.reset}`);
+            // [C5 FIX] Don't waste LLM call — just log reset message
+            // The engine state is managed internally; next prompt will start fresh.
+            console.log(`${c.yellow}Conversation history cleared. Next message starts fresh.${c.reset}`);
             break;
           default:
             console.log(`${c.red}Unknown command: ${cmd}${c.reset}`);

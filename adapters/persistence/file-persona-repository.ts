@@ -1,8 +1,15 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PersonaSchema } from '../../domain/personas/types.js';
+import { z } from 'zod';
 import type { Persona } from '../../domain/personas/types.js';
 import type { PersonaRepository } from '../../domain/personas/repository.js';
+
+// [A1 FIX] Zod schema lives in adapter layer — domain is pure TypeScript
+const PersonaSchema = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  description: z.string().min(1, "Description is required"),
+  prompt: z.string().min(1, "Prompt is required"),
+});
 
 /**
  * File-based implementation of PersonaRepository.

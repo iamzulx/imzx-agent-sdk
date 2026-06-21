@@ -1,3 +1,5 @@
-export { PersonaSchema } from './types.js';
-export type { Persona, Persona as PersonaType } from './types.js';
-export type { PersonaRepository, PersonaRepository as IPersonaRepository } from './repository.js';
+/**
+ * Domain barrel — pure types only, no runtime dependencies.
+ * [A1 FIX] Zod schema moved to adapter layer (file-persona-repository.ts).
+ */
+export type { Persona } from './types.js';

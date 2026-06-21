@@ -73,7 +73,10 @@ export class AgentEngine implements AgentEnginePort {
     this.tools = getToolDefinitions();
     this.brain = new AgentBrain();
     // Lazy-init telemetry and checkpoint (dynamic imports to avoid hard deps)
-    this.initOptionalModules().catch(() => {});
+    // [C4 FIX] Log init errors instead of silently swallowing
+    this.initOptionalModules().catch((err) => {
+      console.warn(`[agent-engine] Optional module init warning: ${err?.message || err}`);
+    });
   }
 
   private async initOptionalModules(): Promise<void> {
@@ -386,8 +389,10 @@ export class AgentEngine implements AgentEnginePort {
       }
 
       // [1.3] Estimate cost for streaming (API doesn't return usage in stream)
-      const estInput = Math.floor(this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);
-      const estOutput = Math.floor(fullContent.length / 4);
+      // [C6 FIX] Better token estimation — chars/3.75 is more accurate for mixed English/code
+      const totalMsgChars = this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+      const estInput = Math.ceil(totalMsgChars / 3.75);
+      const estOutput = Math.ceil(fullContent.length / 3.75);
       this.trackCost(estInput, estOutput);
 
       // If no tool calls — final answer
@@ -448,7 +453,7 @@ export class AgentEngine implements AgentEnginePort {
   /** Check if context is getting too large and compact if needed. */
   private compactIfNeeded(): void {
     const totalChars = this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-    const estimatedTokens = Math.floor(totalChars / 4);
+    const estimatedTokens = Math.ceil(totalChars / 3.75); // [C6 FIX] Better ratio
     const maxContextTokens = 100_000; // Conservative limit for most models
 
     if (estimatedTokens > maxContextTokens * 0.8) {
