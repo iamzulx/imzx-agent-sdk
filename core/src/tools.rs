@@ -36,9 +36,46 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    /// Parses a ToolCall from raw LLM response text.
-    /// Only extracts the first Action/Action Input pair — does NOT execute.
+    /// Parses a ToolCall from LLM response text.
+    /// Tries JSON function calling format first, falls back to Action/Action Input pattern.
+    /// Only extracts the FIRST tool call — does NOT execute.
     pub fn parse_from_response(response: &str) -> Option<Self> {
+        // Strategy 1: JSON function calling format (preferred, harder to inject)
+        if let Some(tc) = Self::parse_json_function_call(response) {
+            return Some(tc);
+        }
+
+        // Strategy 2: Action/Action Input pattern (legacy, more injection-prone)
+        Self::parse_action_pattern(response)
+    }
+
+    /// Parse OpenAI-style function calling: {"name": "...", "arguments": "{...}"}
+    fn parse_json_function_call(response: &str) -> Option<Self> {
+        // Look for JSON blocks in the response
+        for line in response.lines() {
+            let trimmed = line.trim();
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if let (Some(name), Some(args)) = (
+                    val.get("name").and_then(|v| v.as_str()),
+                    val.get("arguments"),
+                ) {
+                    let args_str = if args.is_string() {
+                        args.as_str().unwrap_or("{}").to_string()
+                    } else {
+                        args.to_string()
+                    };
+                    return Some(ToolCall {
+                        tool_name: name.to_string(),
+                        args: args_str,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// Parse legacy Action/Action Input pattern.
+    fn parse_action_pattern(response: &str) -> Option<Self> {
         let mut tool_name = String::new();
         let mut tool_args = String::new();
         let mut found = false;
