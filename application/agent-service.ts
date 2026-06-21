@@ -20,9 +20,11 @@ export interface RunOptions {
 
 /**
  * Agent Service — primary entry point for all interface layers.
+ * [C2 FIX] Made thread-safe — persona is resolved per-request, not stored as instance state.
+ * The lastPersona field is only for CLI getCurrentPersona() display.
  */
 export class AgentService {
-  private currentPersona: Persona | null = null;
+  private lastPersona: Persona | null = null;
 
   constructor(
     private readonly getPersonaUseCase: GetPersonaUseCase,
@@ -31,16 +33,18 @@ export class AgentService {
 
   /**
    * Execute agent with full options support.
+   * Thread-safe: persona is resolved per-call, engine state is isolated per execute().
    */
   async execute(agentId: string, userPrompt: string, options: RunOptions = {}): Promise<string> {
-    // Step 1: Fetch persona
-    this.currentPersona = await this.getPersonaUseCase.execute(agentId);
+    // Step 1: Fetch persona (local variable — not stored on instance during execution)
+    const persona = await this.getPersonaUseCase.execute(agentId);
+    this.lastPersona = persona; // Track for CLI display only
 
     // Step 2: Initialize engine
     await this.agentEngine.initialize(
       agentId,
-      this.currentPersona.description,
-      this.currentPersona.prompt
+      persona.description,
+      persona.prompt
     );
 
     // Step 3: Set budget if provided
@@ -88,9 +92,9 @@ export class AgentService {
   }
 
   /**
-   * Get the currently loaded persona.
+   * Get the last-used persona (for CLI display only — not authoritative during execution).
    */
   getCurrentPersona(): Persona | null {
-    return this.currentPersona;
+    return this.lastPersona;
   }
 }

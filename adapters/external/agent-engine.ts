@@ -58,6 +58,8 @@ export class AgentEngine implements AgentEnginePort {
   public brain: AgentBrain;
   private telemetry: TelemetryCollector | null = null;
   private checkpointMgr: CheckpointManager | null = null;
+  // [C7 FIX] Plugin manager for pre/post LLM hooks
+  private pluginManager: import('../tools/plugin-system.js').PluginManager | null = null;
 
   constructor(config: AgentEngineConfig) {
     this.config = {
@@ -87,6 +89,11 @@ export class AgentEngine implements AgentEnginePort {
     try {
       const { CheckpointManager } = await import('../memory/conversation-checkpoint.js');
       this.checkpointMgr = new CheckpointManager();
+    } catch { /* optional */ }
+    // [C7 FIX] Initialize plugin manager for pre/post LLM hooks
+    try {
+      const { PluginManager } = await import('../tools/plugin-system.js');
+      this.pluginManager = new PluginManager();
     } catch { /* optional */ }
   }
 
@@ -221,10 +228,34 @@ export class AgentEngine implements AgentEnginePort {
 
       // Call LLM with retry
       this.state = 'thinking';
+
+      // [C7 FIX] Run pre_llm_call plugin hook — allows plugins to modify messages before LLM call
+      let hookMessages = [...this.messages];
+      if (this.pluginManager) {
+        try {
+          const preCtx = await this.pluginManager.runHook('pre_llm_call', {
+            hook: 'pre_llm_call',
+            messages: hookMessages,
+          });
+          if (preCtx.messages) hookMessages = preCtx.messages as LlmMessage[];
+        } catch { /* hook errors don't block LLM call */ }
+      }
+
       const response = await this.withRetry(
-        () => this.llm.complete(this.messages, this.tools),
+        () => this.llm.complete(hookMessages, this.tools),
         'LLM call'
       );
+
+      // [C7 FIX] Run post_llm_call plugin hook — allows plugins to inspect/modify response
+      if (this.pluginManager) {
+        try {
+          await this.pluginManager.runHook('post_llm_call', {
+            hook: 'post_llm_call',
+            messages: hookMessages,
+            response: { content: response.content, toolCalls: response.toolCalls },
+          });
+        } catch { /* hook errors don't block response */ }
+      }
 
       // [1.3] Track real cost
       this.trackCost(response.usage.inputTokens, response.usage.outputTokens);
