@@ -17,7 +17,7 @@ use crate::tools::{ToolCall, ToolRegistry, UntrustedObservation};
 use anyhow::{anyhow, Result};
 use std::fmt;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SessionStats {
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
@@ -231,14 +231,15 @@ impl Agent {
         });
 
         // Get augmented context from memory (embeddings if available)
-        let augmented = if let Some(embedder) = &self.embedder {
+        let augmented_context = if let Some(embedder) = &self.embedder {
             let embedding = embedder.embed(input)?;
             self.memory
                 .add_message("user", input, Some(embedding.clone()));
-            self.memory.get_augmented_context(&embedding, 3)
+            let results = self.memory.semantic_search(&embedding, 3);
+            results.iter().map(|e| format!("{}: {}", e.role, e.content)).collect::<Vec<_>>().join("\n")
         } else {
             self.memory.add_message("user", input, None);
-            String::new()
+            self.memory.get_context()
         };
 
         let mut final_response = String::new();
@@ -261,10 +262,10 @@ impl Agent {
             // passed as the system_prompt parameter to generate(), so including them
             // in context would duplicate the system prompt in the LLM call.
             let context_str = self.context.render_excluding_role(&ContextRole::System);
-            let full_context = if augmented.is_empty() {
+            let full_context = if augmented_context.is_empty() {
                 context_str
             } else {
-                format!("{}\n\n## Augmented Memory:\n{}", context_str, augmented)
+                format!("{}\n\n## Augmented Memory:\n{}", context_str, augmented_context)
             };
 
             // Select model via orchestrator
@@ -309,7 +310,7 @@ impl Agent {
                 .hooks
                 .execute(&HookEvent::OnIteration {
                     iteration,
-                    thinking: response.clone(),
+                    thinking: response.to_string(),
                 })
                 .await?
             {
@@ -318,7 +319,7 @@ impl Agent {
 
             // Add assistant response to context
             self.context.push(ContextEntry {
-                content: response.clone(),
+                content: response.to_string(),
                 role: ContextRole::AssistantResponse,
                 token_estimate: estimate_tokens(&response),
                 priority: Priority::Normal,
@@ -383,7 +384,7 @@ impl Agent {
                 self.state = AgentState::Observing;
             } else {
                 // No tool call — this is the final response
-                final_response = response.clone();
+                final_response = response.to_string();
                 self.state = AgentState::Responding;
 
                 // Add to memory
