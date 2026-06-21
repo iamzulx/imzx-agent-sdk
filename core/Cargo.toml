@@ -1,6 +1,6 @@
 [package]
 name = "imzx-core"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 description = "imzx-agent-sdk Rust core — NAPI-RS bindings for TypeScript"
 
