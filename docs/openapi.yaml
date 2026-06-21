@@ -5,7 +5,7 @@ info:
     REST API for the imzx-agent-sdk — a self-improving AI agent framework.
     Supports synchronous and streaming agent execution, OpenAI-compatible
     chat completions, persona management, and session statistics.
-  version: 0.5.0
+  version: 0.7.0
   contact:
     name: Iamzulx
     url: https://github.com/iamzulx/imzx-agent-sdk
@@ -435,3 +435,87 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+
+  # --- Dashboard ---
+  /api/dashboard/stats:
+    get:
+      summary: Dashboard statistics
+      description: Returns agent stats, memory count, skill count, uptime
+      operationId: getDashboardStats
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uptime: { type: number }
+                  memoryMB: { type: number }
+                  memoryCount: { type: integer }
+                  skillCount: { type: integer }
+                  nodeVersion: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/dashboard/memory:
+    get:
+      summary: List memory entries
+      operationId: getDashboardMemory
+      responses:
+        "200":
+          description: Memory entries array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemoryEntry"
+
+  /api/dashboard/skills:
+    get:
+      summary: List saved skills
+      operationId: getDashboardSkills
+      responses:
+        "200":
+          description: Skills array
+
+  # --- Auth ---
+  /api/auth/keys:
+    get:
+      summary: List API keys
+      description: Returns all keys (hashed, never shows raw keys)
+      operationId: listAuthKeys
+      responses:
+        "200":
+          description: Key list
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      summary: Generate new API key
+      operationId: generateAuthKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope: { type: string, description: "Key scope: full, read, write, mcp, a2a" }
+                label: { type: string }
+                expiresDays: { type: integer }
+      responses:
+        "200":
+          description: Generated key (shown once)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # --- Health ---
+  /api/health:
+    get:
+      summary: Health check
+      description: No auth required
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: Healthy

@@ -341,3 +341,63 @@ Layer 6: Git Security
 2. Record events: `telemetry.addEvent(span, 'tool_call', {tool: 'read_file'})`
 3. End: `telemetry.endSpan(span, {success: true})`
 4. Spans exported to OTLP collector or `.imzx/telemetry/`
+
+---
+
+## v0.7.0 Production Features
+
+### HITL (Human-in-the-Loop) Manager
+`adapters/tools/hitl-manager.ts` — Task-level approval gates.
+- Risk-based auto-approve: low risk auto-pass, high risk require human
+- Persistent storage to `.imzx/hitl/pending.json`
+- Timeout with configurable default action
+- CLI: `imzx hitl approve/reject/list`
+
+### LLM-as-a-Judge
+`adapters/tools/llm-judge.ts` — Rubric-based evaluation.
+- Built-in rubrics: code_quality, answer_accuracy, safety, completeness
+- Head-to-head output comparison
+- Structured JSON scoring with per-criterion reasoning
+
+### Cost-Aware Planning
+`adapters/tools/cost-planner.ts` — Estimate costs before execution.
+- Per-model pricing for 8+ models
+- Task cost estimation (prompt + tool calls)
+- Auto-routing: simple tasks to cheap model, complex to capable
+
+### Policy-as-Code Engine
+`adapters/security/policy-engine.ts` — Declarative governance rules.
+- 6 built-in policies (no system files, max web search, etc.)
+- Priority-ordered rule evaluation
+- Violation logging to `.imzx/logs/policy-violations.jsonl`
+
+### Topology Patterns
+`adapters/tools/topology.ts` — Multi-agent communication topologies.
+- Chain: A-B-C sequential pipeline
+- Star: central orchestrator, parallel workers, aggregator
+- Mesh: peer-to-peer debate with configurable rounds
+
+### Agent Lifecycle Management
+`adapters/tools/agent-lifecycle.ts` — Explicit states and health monitoring.
+- States: init, planning, executing, waiting, completed, terminated
+- Health checks, crash recovery, auto-restart
+
+### SLM Router
+`adapters/tools/slm-router.ts` — Auto-route to cost-effective small models.
+- Catalog: Phi-4, Qwen 2.5, Gemma 2, Llama 3.2
+- Task classification: simple_chat, code, math, summarize, research, complex_reasoning
+
+### CUA Browser
+`adapters/tools/cua-browser.ts` — Browser automation via curl.
+- Navigate URLs, extract page content, screenshot
+- Navigation history, content search
+
+### RAG Pipeline
+`adapters/tools/rag-pipeline.ts` — TF-IDF vector search.
+- Chunk-based document storage, automatic indexing
+- Hybrid graph + vector ranking
+
+### Auth Manager
+`adapters/security/auth-manager.ts` — Multi-key authentication.
+- Scoped API keys stored as SHA-256 hashes
+- Auth event audit log, IP allowlist, HMAC signing
