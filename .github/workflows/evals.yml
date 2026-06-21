@@ -10,16 +10,17 @@ jobs:
   eval:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
-          cache: npm
+          node-version: '24'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
       - name: TypeScript typecheck
         run: npx tsc --noEmit
 
