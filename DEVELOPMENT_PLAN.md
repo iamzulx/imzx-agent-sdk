@@ -8,11 +8,11 @@
 
 ## EXECUTIVE SUMMARY
 
-imzx-agent-sdk adalah **TypeScript-first self-improving AI agent framework** dengan Clean Architecture. Saat ini **v0.6.0 COMPLETE** dengan semua fitur production-ready: `imzx` single command CLI, A2A protocol, MCP server, plugin system, git context, project context, orchestration engine, telemetry, web dashboard, Python SDK, Docker support, TF-IDF embeddings, conversation checkpoints, multi-provider LLM, dan evaluation framework.
+imzx-agent-sdk is a **TypeScript-first self-improving AI agent framework** with Clean Architecture. Currently **v0.6.0 COMPLETE** with all production-ready features: `imzx` single command CLI, A2A protocol, MCP server, plugin system, git context, project context, orchestration engine, telemetry, web dashboard, Python SDK, Docker support, TF-IDF embeddings, conversation checkpoints, multi-provider LLM, and evaluation framework.
 
-**Unique positioning**: Satu-satunya framework yang natively menggabungkan self-improving (memory + reflection + skills + self-modification + knowledge graph + embeddings) dalam satu package TypeScript — ditambah protocol support (A2A + MCP) dan observability (telemetry + dashboard). Kompetitor terdekat (Mastra, OpenAI Agents SDK, LangGraph TS) tidak punya kombinasi ini.
+**Unique positioning**: The only framework that natively combines self-improving (memory + reflection + skills + self-modification + knowledge graph + embeddings) in a single TypeScript package — plus protocol support (A2A + MCP) and observability (telemetry + dashboard). Closest competitors (Mastra, OpenAI Agents SDK, LangGraph TS) lack this combination.
 
-**Achievement**: 22 fitur baru di v0.6.0, 29 files changed, +4,741 insertions, 51 TypeScript files, 10K+ lines, CI all green.
+**Achievement**: 22 new features in v0.6.0, 29 files changed, +4,741 insertions, 51 TypeScript files, 10K+ lines, CI all green.
 
 ---
 
@@ -25,7 +25,7 @@ imzx-agent-sdk adalah **TypeScript-first self-improving AI agent framework** den
 
 ### 1.2 Flatten CLI commands ✅
 - 14 subcommands: run, chat, serve, dashboard, config, personas, mcp, plugins, orchestrate, stats, help
-- Argument parsing dengan built-in parser
+- Argument parsing with built-in parser
 
 ### 1.3 Auto-load .env ✅
 - Walk up from cwd to find .env
@@ -35,10 +35,10 @@ imzx-agent-sdk adalah **TypeScript-first self-improving AI agent framework** den
 ### 1.4 Streaming UX polish ✅
 - Token-by-token output (bukan buffered)
 - Color-coded: tool calls (cyan), errors (red), thinking (dim)
-- Progress indicator untuk multi-step tasks
+- Progress indicator for multi-step tasks
 
 ### 1.5 npm publish ✅
-- Published as `@imzx/imzx` ke npmjs.com
+- Published as `@imzx/imzx` to npmjs.com
 - User can `npm install @imzx/imzx` → `imzx run "Hello"`
 - Version 0.6.0
 
@@ -47,7 +47,7 @@ imzx-agent-sdk adalah **TypeScript-first self-improving AI agent framework** den
 ## PHASE 2 — Persistent Intelligence (v0.6.0) ✅ COMPLETE
 
 ### 2.1 Persistent Knowledge Graph ✅
-- **Target**: JSON persistence ke `.imzx/knowledge-graph.json`
+- **Target**: JSON persistence to `.imzx/knowledge-graph.json`
 - **Status**: DONE — entity-relationship memory with auto-save
 
 ### 2.2 Real Embeddings ✅
@@ -148,7 +148,7 @@ imzx-agent-sdk adalah **TypeScript-first self-improving AI agent framework** den
         telemetry + dashboard + git/project context + embeddings
 ```
 
-### Feature Matrix vs Kompetitor
+### Feature Matrix vs Competitors
 
 | Feature | imzx | Mastra | OpenAI TS | LangGraph TS | Claude SDK |
 |---------|------|--------|-----------|--------------|------------|
@@ -232,4 +232,4 @@ Phase 7 (v0.7.0) → Performance & Intelligence [NEXT]
 - Agent marketplace
 - Enterprise features (SSO, RBAC, audit logging)
 
-**Mau mulai dari mana?** Fokus ke v0.7.0 — NAPI build + ML embeddings adalah biggest impact items.
+**What to focus on next?** v0.7.0 — NAPI build + ML embeddings are the biggest impact items.
