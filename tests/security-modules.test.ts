@@ -43,7 +43,7 @@ describe('ContextSummarizer', () => {
   it('should summarize messages and extract key facts', async () => {
     const { ContextSummarizer } = await import('../../adapters/memory/context-summarizer.js');
     const s = new ContextSummarizer();
-    const summary = s.summarize([
+    const summary = await s.summarize([
       { role: 'user', content: 'Fix the bug in auth.ts error: TypeError' },
       { role: 'assistant', content: 'Decided to use try/catch pattern' },
     ]);
@@ -54,7 +54,7 @@ describe('ContextSummarizer', () => {
   it('should format for prompt injection', async () => {
     const { ContextSummarizer } = await import('../../adapters/memory/context-summarizer.js');
     const s = new ContextSummarizer();
-    s.summarize([{ role: 'user', content: 'test message with some error: SyntaxError' }]);
+    await s.summarize([{ role: 'user', content: 'test message with some error: SyntaxError' }]);
     const formatted = s.formatForPrompt();
     expect(formatted).toContain('Context');
   });
@@ -63,7 +63,7 @@ describe('ContextSummarizer', () => {
     const { ContextSummarizer } = await import('../../adapters/memory/context-summarizer.js');
     const s = new ContextSummarizer();
     for (let i = 0; i < 15; i++) {
-      s.summarize([{ role: 'user', content: `Message ${i} with error: Error${i}` }]);
+      await s.summarize([{ role: 'user', content: `Message ${i} with error: Error${i}` }]);
     }
     expect(s.getSummaries().length).toBeLessThanOrEqual(10);
   });

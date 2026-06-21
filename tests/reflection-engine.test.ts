@@ -25,7 +25,7 @@ describe('ReflectionEngine', () => {
     engine.recordToolUse('edit_file');
     engine.recordTokens(5000);
 
-    const reflection = engine.endTask('Fix the bug', 'Bug fixed successfully', 'success');
+    const reflection = await engine.endTask('Fix the bug', 'Bug fixed successfully', 'success');
 
     expect(reflection).not.toBeNull();
     expect(reflection!.outcome).toBe('success');
@@ -43,7 +43,7 @@ describe('ReflectionEngine', () => {
     engine.startTask();
     engine.recordToolUse('web_search');
 
-    const reflection = engine.endTask('Search for info', 'Maximum iterations reached', 'failure');
+    const reflection = await engine.endTask('Search for info', 'Maximum iterations reached', 'failure');
 
     expect(reflection).not.toBeNull();
     expect(reflection!.outcome).toBe('failure');
@@ -59,7 +59,7 @@ describe('ReflectionEngine', () => {
     const engine = new ReflectionEngine(memory);
 
     engine.startTask();
-    engine.endTask('Test task', 'Done', 'success');
+    await engine.endTask('Test task', 'Done', 'success');
 
     const sessions = memory.getByCategory('session');
     expect(sessions.length).toBeGreaterThan(0);
@@ -74,7 +74,7 @@ describe('ReflectionEngine', () => {
 
     for (let i = 0; i < 5; i++) {
       engine.startTask();
-      engine.endTask(`Task ${i}`, 'Done', 'success');
+      await engine.endTask(`Task ${i}`, 'Done', 'success');
     }
 
     const recent = engine.getRecentReflections(3);
@@ -91,7 +91,7 @@ describe('ReflectionEngine', () => {
 
     engine.startTask();
     engine.recordToolUse('run_command');
-    engine.endTask('Build project', 'Build failed', 'failure');
+    await engine.endTask('Build project', 'Build failed', 'failure');
 
     const formatted = engine.formatForPrompt();
     expect(formatted).toContain('Lessons Learned');
@@ -103,7 +103,7 @@ describe('ReflectionEngine', () => {
     const memory = new PersistentMemory(tmpDir);
     const engine = new ReflectionEngine(memory);
 
-    const reflection = engine.endTask('No task', 'Nothing', 'success');
+    const reflection = await engine.endTask('No task', 'Nothing', 'success');
     expect(reflection).toBeNull();
   });
 });
