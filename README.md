@@ -2,7 +2,7 @@
 
 A **self-improving** AI Agent framework — Rust core (NAPI-RS) + TypeScript orchestration with Clean Architecture.
 
-[![Version](https://img.shields.io/badge/version-0.7.1-blue)](https://github.com/iamzulx/imzx-agent-sdk)
+[![Version](https://img.shields.io/badge/version-0.8.2-blue)](https://github.com/iamzulx/imzx-agent-sdk)
 [![npm](https://img.shields.io/npm/v/@imzx/imzx)](https://www.npmjs.com/package/@imzx/imzx)
 [![CI](https://github.com/iamzulx/imzx-agent-sdk/actions/workflows/main.yml/badge.svg)](https://github.com/iamzulx/imzx-agent-sdk/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

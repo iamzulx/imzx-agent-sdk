@@ -4,7 +4,7 @@
 
 imzx-agent-sdk is a **self-improving** AI Agent framework built with Clean Architecture. The agent learns from every interaction — remembering user preferences, reflecting on task outcomes, extracting reusable skills, and optimizing its own performance over time.
 
-**Version**: v0.7.1
+**Version**: v0.8.2
 **Intelligence Layers**: 8 (memory, reflection, skills, self-mod, knowledge graph, embeddings, git context, project context)
 
 ## Layer Architecture
@@ -137,7 +137,7 @@ AgentBrain.onTaskEnd()
 Next Task (agent is smarter)
 ```
 
-## Module Map (v0.7.1)
+## Module Map (v0.8.2)
 
 ### External Adapters
 | Module | File | Description |
@@ -201,7 +201,7 @@ Next Task (agent is smarter)
 | Entities | `knowledge-graph.json` | Cross-session | "PostgreSQL --uses--> connection pooling" |
 | Checkpoints | `.imzx/checkpoints/` | Session recovery | Full conversation state snapshot |
 
-## Data Flow: Single Prompt (v0.7.1)
+## Data Flow: Single Prompt (v0.8.2)
 
 ```
 User: "Fix the bug in auth.py"

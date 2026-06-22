@@ -34,7 +34,7 @@ const magenta = (s) => `${esc(35)}${s}${esc(39)}`;
 const cyan = (s) => `${esc(36)}${s}${esc(39)}`;
 
 // ── Read version from package.json ────────────────────────────────────────
-let VERSION = '0.7.1';
+let VERSION = '0.8.2';
 try {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
   VERSION = pkg.version || VERSION;

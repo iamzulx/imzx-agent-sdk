@@ -144,7 +144,11 @@ class HttpTransport implements McpTransport {
   async connect(): Promise<void> {
     // HTTP transport is connectionless — just verify the endpoint
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const normalized = normalizeOutboundUrl(this.baseUrl, { allowHttp: true });
+      if (normalized !== this.baseUrl) {
+        this.baseUrl = normalized;
+      }
+      const response = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(10_000) });
       if (response.ok) {
         this.connected = true;
       }
@@ -166,6 +170,7 @@ class HttpTransport implements McpTransport {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(msg),
+      signal: AbortSignal.timeout(30_000),
     });
     
     return response.json() as Promise<object>;
@@ -309,4 +314,37 @@ export class McpClient {
     }
     return count;
   }
+}
+
+function normalizeOutboundUrl(input: string, options?: { allowHttp?: boolean }): string {
+  const allowHttp = options?.allowHttp ?? false;
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+  if (!['https:', 'http:'].includes(parsed.protocol)) {
+    throw new Error('Only HTTP(S) URLs are allowed');
+  }
+  if (!allowHttp && parsed.protocol !== 'https:') {
+    throw new Error('Only HTTPS URLs are allowed');
+  }
+  const hostname = parsed.hostname;
+  const isPrivate =
+    hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '[::1]' ||
+    hostname === '::1' ||
+    hostname.startsWith('127.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    hostname.startsWith('169.254.') ||
+    hostname.startsWith('fd') ||
+    hostname.startsWith('fe80');
+  if (isPrivate) {
+    throw new Error('Access to private/local addresses is blocked');
+  }
+  return parsed.toString();
 }

@@ -143,7 +143,7 @@ export class CliHandler {
 
     // Banner
     console.log(`${c.bold}${c.blue}╔══════════════════════════════════════╗${c.reset}`);
-    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.7.1           ║${c.reset}`);
+    console.log(`${c.bold}${c.blue}║     imzx-agent-sdk v0.8.2           ║${c.reset}`);
     console.log(`${c.bold}${c.blue}╚══════════════════════════════════════╝${c.reset}`);
     console.log(`${c.dim}Persona: ${personaName} | Streaming: ${runOptions.streaming ? 'ON' : 'OFF'}${c.reset}`);
     console.log(`${c.dim}Budget: ${runOptions.budget?.maxTokens ?? '500K'} tokens, $${runOptions.budget?.budgetUsd ?? '5.00'}${c.reset}`);
@@ -594,7 +594,7 @@ export class CliHandler {
   }
 
   private showHelp(): void {
-    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.7.1${c.reset} — AI Agent Framework\n`);
+    console.log(`${c.bold}${c.blue}imzx-agent-sdk v0.8.2${c.reset} — AI Agent Framework\n`);
     console.log(`${c.bold}Usage:${c.reset}`);
     console.log(`  imzx run <prompt> [options]    Run agent with a prompt`);
     console.log(`  imzx chat [options]            Interactive REPL mode`);

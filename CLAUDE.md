@@ -93,6 +93,7 @@ imzx help / imzx --version
 | `IMZX_LLM_BASE_URL` | Custom endpoint | auto-detect |
 | `IMZX_MODEL` | Model name | auto-detect |
 | `IMZX_AUTO_APPROVE` | Skip tool approval | false |
+| `IMZX_POLICY_ENABLED` | Enable Policy Engine for tools | auto (enabled in non-interactive/API mode) |
 | `IMZX_DASHBOARD_PORT` | Dashboard port | 3100 |
 
 ## Project Structure

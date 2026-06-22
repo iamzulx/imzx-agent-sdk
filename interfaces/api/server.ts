@@ -143,7 +143,7 @@ export async function createServer(agentService: AgentService, options: ServerOp
       if (method === 'GET' && url.pathname === '/api/health') {
         return jsonResponse(res, 200, {
           status: 'ok',
-          version: "0.7.1",
+          version: "0.8.2",
           uptime: process.uptime(),
         });
       }
@@ -298,7 +298,7 @@ export async function createServer(agentService: AgentService, options: ServerOp
 
   server.listen(port, host, () => {
     console.log(`\x1b[1m\x1b[34m╔══════════════════════════════════════╗\x1b[0m`);
-    console.log(`\x1b[1m\x1b[34m║   imzx-agent-sdk API Server v0.7.1  ║\x1b[0m`);
+    console.log(`\x1b[1m\x1b[34m║   imzx-agent-sdk API Server v0.8.2  ║\x1b[0m`);
     console.log(`\x1b[1m\x1b[34m╚══════════════════════════════════════╝\x1b[0m`);
     console.log(`\x1b[32m✓ Server running at http://${host}:${port}\x1b[0m`);
     console.log(`\x1b[2m  POST /api/run          — Run agent (sync/streaming)`);

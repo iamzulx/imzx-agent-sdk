@@ -79,7 +79,7 @@ const BUILTIN_POLICIES: Policy[] = [
   {
     id: 'no-network-commands',
     name: 'No Network Commands',
-    description: 'Block curl, wget, nc in run_command',
+    description: 'Block network-transfer commands in run_command',
     conditions: [
       { field: 'toolName', operator: 'equals', value: 'run_command' },
       { field: 'toolArgs.command', operator: 'regex', value: '^(curl|wget|nc|ncat|socat)\\b' },

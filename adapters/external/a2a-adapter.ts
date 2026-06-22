@@ -289,14 +289,19 @@ export class A2AAdapter {
   }
 
   async discoverAgents(url: string): Promise<AgentCard[]> {
-    const wellKnown = url.replace(/\/+$/, '') + '/.well-known/agent.json';
-    const res = await fetch(wellKnown);
+    const normalizedUrl = normalizeOutboundUrl(url, { allowHttp: false });
+    const wellKnown = normalizedUrl.replace(/\/+$/, '') + '/.well-known/agent.json';
+    const res = await fetch(wellKnown, { signal: AbortSignal.timeout(15_000), redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error('Discovery blocked: redirects are not followed');
+    }
     if (!res.ok) throw new Error(`Discovery failed: ${res.status}`);
     const card = (await res.json()) as AgentCard;
     return [card];
   }
 
   async sendTask(agentUrl: string, task: A2ATask): Promise<A2AResult> {
+    const normalizedUrl = normalizeOutboundUrl(agentUrl, { allowHttp: false });
     const rpcBody: JsonRpcRequest = {
       jsonrpc: '2.0',
       id: task.id,
@@ -310,12 +315,17 @@ export class A2AAdapter {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
 
-    const res = await fetch(agentUrl.replace(/\/+$/, '') + '/a2a/tasks/send', {
+    const res = await fetch(normalizedUrl.replace(/\/+$/, '') + '/a2a/tasks/send', {
       method: 'POST',
       headers,
       body: JSON.stringify(rpcBody),
+      signal: AbortSignal.timeout(15_000),
+      redirect: 'manual',
     });
 
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error('sendTask blocked: redirects are not followed');
+    }
     if (!res.ok) throw new Error(`sendTask failed: ${res.status}`);
     const rpc = (await res.json()) as JsonRpcResponse;
     if (rpc.error) throw new Error(rpc.error.message);
@@ -527,4 +537,38 @@ export class A2AAdapter {
     sendEvent('done', {});
     res.end();
   }
+}
+
+function normalizeOutboundUrl(input: string, options?: { allowHttp?: boolean }): string {
+  const allowHttp = options?.allowHttp ?? false;
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+  if (!['https:', 'http:'].includes(parsed.protocol)) {
+    throw new Error('Only HTTP(S) URLs are allowed');
+  }
+  if (!allowHttp && parsed.protocol !== 'https:') {
+    throw new Error('Only HTTPS URLs are allowed');
+  }
+  const hostname = parsed.hostname;
+  const isPrivate =
+    hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '[::1]' ||
+    hostname === '::1' ||
+    hostname.startsWith('127.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    hostname.startsWith('169.254.') ||
+    hostname.startsWith('fd') ||
+    hostname.startsWith('fe80') ||
+    hostname.startsWith('[') && hostname.includes(']:') === false && hostname.includes('127.');
+  if (isPrivate) {
+    throw new Error('Access to private/local addresses is blocked');
+  }
+  return parsed.toString();
 }

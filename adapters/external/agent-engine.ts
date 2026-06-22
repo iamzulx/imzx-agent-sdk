@@ -366,7 +366,12 @@ export class AgentEngine implements AgentEnginePort {
 
   async *runStreaming(prompt: string): AsyncGenerator<StreamChunk> {
     // [Brain] Process user message for learning signals (mirrors run())
-    this.brain.processUserMessage(prompt);
+    const brainResult = this.brain.processUserMessage(prompt);
+    // [2026-06-22 FIX] Block execution if guardrails detected injection in streaming path
+    if (brainResult.blocked) {
+      yield { type: 'error', content: `Request blocked by security guardrails: ${brainResult.blockReason}` };
+      return;
+    }
     this.brain.onTaskStart();
 
     this.messages.push({ role: 'user', content: prompt });

@@ -200,21 +200,25 @@ export class AgentBrain {
     blocked: boolean;
     blockReason?: string;
   } {
-    const isCorrection = this.memory.detectCorrection(message);
-    const before = this.memory.stats().total;
-    this.memory.detectPreferences(message);
-    const after = this.memory.stats().total;
-
-    // Process message for knowledge graph
-    this.graph.processMessage(message);
-
-    // Security guardrails — check for injection attempts
-    // [H1 FIX] Actually block execution when injection is detected (was only logging before)
+    // Security guardrails — check for injection attempts FIRST to prevent
+    // poisoning memory/preferences/graph with malicious input.
     const inputCheck = this.guardrails.checkInput(message);
     let blocked = false;
     if (!inputCheck.safe) {
       this.memory.save('correction', `security_${Date.now()}`, `Blocked: ${inputCheck.reason}`, { tags: ['security', inputCheck.category || 'unknown'], importance: 10 });
       blocked = true;
+    }
+
+    const isCorrection = blocked ? false : this.memory.detectCorrection(message);
+    const before = this.memory.stats().total;
+    if (!blocked) {
+      this.memory.detectPreferences(message);
+    }
+    const after = this.memory.stats().total;
+
+    // Only enrich the knowledge graph for non-malicious input
+    if (!blocked) {
+      this.graph.processMessage(message);
     }
 
     return {

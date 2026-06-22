@@ -19,7 +19,7 @@ export class McpServer {
   private serverName: string;
   private serverVersion: string;
 
-  constructor(name: string = 'imzx-agent-tools', version: string = '0.7.1') {
+  constructor(name: string = 'imzx-agent-tools', version: string = '0.8.2') {
     this.serverName = name;
     this.serverVersion = version;
   }

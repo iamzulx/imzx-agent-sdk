@@ -811,6 +811,13 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
                 || ip.octets()[0] == 0
         }
         IpAddr::V6(ip) => {
+            // IPv4-mapped IPv6 addresses (e.g. ::ffff:169.254.169.254) must
+            // be evaluated under the IPv4 policy, otherwise private/link-local
+            // targets can bypass the v6-only check.
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return is_blocked_ip(IpAddr::V4(mapped));
+            }
+
             ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()

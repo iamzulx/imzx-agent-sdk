@@ -282,14 +282,23 @@ export class PluginManager extends EventEmitter {
   private watcher: fs.FSWatcher | null = null;
   private grantedPermissions = new Set<string>();
 
+  private options: { loadPolicy?: 'allow-in-process' | 'sandbox-first' };
+
   constructor(
     baseDir?: string,
     options?: {
       /** Additional directories from which plugins may be loaded. */
       allowedPluginDirs?: string[];
+      /**
+       * Loading policy for untrusted plugins.
+       * - `sandbox-first` (default): load in-process for tool/handler resolution, but execute via sandboxed subprocess by default.
+       * - `allow-in-process`: allow direct in-process handler execution (legacy behavior).
+       */
+      loadPolicy?: 'allow-in-process' | 'sandbox-first';
     },
   ) {
     super();
+    this.options = { loadPolicy: options?.loadPolicy ?? 'sandbox-first' };
     this.pluginDir = baseDir ?? path.join(process.cwd(), '.imzx', 'plugins');
     this.allowedPluginDirs = new Set([path.resolve(this.pluginDir)]);
 
@@ -450,10 +459,13 @@ export class PluginManager extends EventEmitter {
           this.grantedPermissions.add(key);
           continue;
         }
-        // In non-interactive mode or tests, auto-grant
+        // Fail closed in non-interactive/API mode (server, CI, automation).
+        // Previous behavior auto-granted permissions here, which bypassed approval gates.
         if (!process.stdin.isTTY) {
-          this.grantedPermissions.add(key);
-          continue;
+          throw new Error(
+            `Plugin "${pluginName}" requires permission "${perm}" in non-interactive mode. ` +
+            `Grant explicitly with grantPermission("${pluginName}", "${perm}") or set IMZX_AUTO_APPROVE=true.`,
+          );
         }
         throw new Error(
           `Plugin "${pluginName}" requires permission "${perm}". ` +
@@ -549,6 +561,7 @@ export class PluginManager extends EventEmitter {
       };
       this.plugins.set(manifest.name, plugin);
       this.emit('plugin:error', { name: manifest.name, error: errorMsg });
+      console.warn(`[plugin-system] Plugin load failed (denied by sandbox/load policy): ${manifest.name} — ${errorMsg}`);
       return plugin;
     }
 
@@ -743,6 +756,9 @@ export class PluginManager extends EventEmitter {
       // Run in sandboxed subprocess
       const entryPath = this.resolveEntry(plugin.pluginPath, this.resolveManifest(plugin.pluginPath));
       result = await runSandboxed(entryPath, toolName, finalArgs, options.timeout);
+    } else if (this.options.loadPolicy !== 'allow-in-process' && plugin) {
+      const entryPath = this.resolveEntry(plugin.pluginPath, this.resolveManifest(plugin.pluginPath));
+      result = await runSandboxed(entryPath, toolName, finalArgs, options?.timeout);
     } else {
       result = await handler(finalArgs);
     }

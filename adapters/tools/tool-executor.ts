@@ -7,6 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import * as readline from 'node:readline';
+import { getPolicyEngine } from '../security/policy-engine.js';
 
 // --- Tool Definitions (OpenAI function calling format) ---
 
@@ -197,10 +198,10 @@ const ALLOWED_COMMANDS = [
   'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'find', 'pwd', 'echo', 'date',
   'git', 'npm',
   'cargo', 'rustc', 'rustfmt', 'clippy',
-  'curl', 'wget',
 ];
 // [C4 FIX] Removed node, npx, python3, pip, tsx, tsc from allowlist
 // These allowed arbitrary code download+execution (e.g., node -e "...", npx malicious-pkg)
+// [2026-06-22] Removed curl/wget to reduce network egress from default tool path.
 
 function isCommandAllowed(command: string): boolean {
   const firstWord = command.trim().split(/\s+/)[0];
@@ -351,7 +352,7 @@ async function webSearch(query: string): Promise<string> {
     const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; imzx-agent-sdk/0.7.1)',
+        'User-Agent': 'Mozilla/5.0 (compatible; imzx-agent-sdk/0.8.2)',
         'Accept': 'text/html',
       },
       signal: AbortSignal.timeout(10_000),
@@ -410,6 +411,23 @@ async function webSearch(query: string): Promise<string> {
 // --- Tool Execution ---
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+  // [2026-06-22 FIX] Enforce policy engine when enabled
+  const policyEnabled = process.env.IMZX_POLICY_ENABLED === '1' || process.env.IMZX_POLICY_ENABLED === 'true' || !process.stdin.isTTY;
+  if (policyEnabled) {
+    try {
+      const policy = getPolicyEngine().evaluate({ toolName: name, toolArgs: args, _estimatedTokens: 0 });
+      if (!policy.allowed) {
+        return `Tool '${name}' denied by policy: ${policy.reason} (${policy.appliedPolicy})`;
+      }
+      if (policy.requiresApproval) {
+        const approved = await requestApproval(name, args);
+        if (!approved) return `Tool '${name}' denied by policy approval gate: ${policy.reason}`;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Tool '${name}' blocked by policy engine error: ${msg}`;
+    }
+  }
   // [2.4] Tool approval for dangerous tools
   if (DANGEROUS_TOOLS.has(name)) {
     const approved = await requestApproval(name, args);
@@ -490,7 +508,13 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
           encoding: 'utf-8',
-          env: { ...process.env, TERM: 'dumb' },
+          env: {
+            PATH: process.env.PATH || '',
+            HOME: process.env.HOME || '/tmp',
+            TMPDIR: process.env.TMPDIR || '/tmp',
+            TERM: 'dumb',
+            LANG: process.env.LANG || 'en_US.UTF-8',
+          },
         });
         return smartTruncate(output, 50000);
       } catch (err: any) {
@@ -586,10 +610,12 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         // [C6 FIX] Allowlist env vars instead of blacklist — only pass safe subset
         const safeEnv: Record<string, string> = {
           PATH: process.env.PATH || '',
-          HOME: '/tmp',  // Isolated home
+          HOME: '/tmp',
           TMPDIR: '/tmp',
           TERM: 'dumb',
           LANG: process.env.LANG || 'en_US.UTF-8',
+          NODE_OPTIONS: '',
+          ELECTRON_RUN_AS_NODE: '',
         };
         const output = execSync(cmd, {
           timeout: 30_000,
