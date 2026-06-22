@@ -5,7 +5,7 @@ info:
     REST API for the imzx-agent-sdk — a self-improving AI agent framework.
     Supports synchronous and streaming agent execution, OpenAI-compatible
     chat completions, persona management, and session statistics.
-  version: 0.7.0
+  version: 0.8.2
   contact:
     name: Iamzulx
     url: https://github.com/iamzulx/imzx-agent-sdk
@@ -70,7 +70,7 @@ components:
         version:
           type: string
           description: SDK version
-          example: "0.5.0"
+          example: "0.8.2"
         uptime:
           type: number
           format: double
@@ -78,7 +78,7 @@ components:
           example: 123.456
       example:
         status: ok
-        version: "0.5.0"
+        version: "0.8.2"
         uptime: 123.456
 
     StatsResponse:
@@ -509,13 +509,3 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  # --- Health ---
-  /api/health:
-    get:
-      summary: Health check
-      description: No auth required
-      operationId: healthCheck
-      security: []
-      responses:
-        "200":
-          description: Healthy

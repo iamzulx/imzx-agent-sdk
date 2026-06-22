@@ -268,6 +268,7 @@ export class HitlManager {
         // [S7 FIX] Validate regex pattern before use — prevent ReDoS
         let regex: RegExp;
         try {
+          if (r.condition.pattern.length > 200) return false;
           regex = new RegExp(r.condition.pattern, 'i');
         } catch {
           return false; // Invalid regex — skip this rule

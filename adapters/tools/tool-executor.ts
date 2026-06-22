@@ -5,7 +5,6 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
 import * as readline from 'node:readline';
 import { getPolicyEngine } from '../security/policy-engine.js';
 
@@ -495,15 +494,16 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     case 'run_command': {
       const command = args.command as string;
       // [C3 FIX] Block shell metacharacters INCLUDING newlines (previous filter missed \n\r)
-      if (/[;|`$()&><\n\r\\{}[\]~]/.test(command)) {
-        return 'Error: Shell metacharacters (;|`$()&><\\n\\r\\\\{}[]~) are blocked for security.';
+      if (/[;|`$()&><\n\r\\{}[\\]~]/.test(command)) {
+        return 'Error: Shell metacharacters (;|`$()&><\\\\n\\\\r\\\\\\\\{}[]~) are blocked for security.';
       }
       if (!isCommandAllowed(command)) {
         return `Error: Command not allowed. Allowed: ${ALLOWED_COMMANDS.join(', ')}`;
       }
       try {
         const cwd = args.cwd ? sanitizePath(args.cwd as string) : process.cwd();
-        const output = execSync(command, {
+        const { execFileSync } = await import('node:child_process');
+        const output = execFileSync('/bin/sh', ['-c', command], {
           cwd,
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
@@ -575,7 +575,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       // [H6 FIX] Disable redirect following to prevent SSRF via redirect chains
       try {
         const response = await fetch(url, {
-          headers: { 'User-Agent': 'imzx-agent-sdk/0.7.1' },
+          headers: { 'User-Agent': 'imzx-agent-sdk/0.8.2' },
           signal: AbortSignal.timeout(15_000),
           redirect: 'manual',  // [H6 FIX] Do not follow redirects
         });
@@ -603,21 +603,22 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     case 'run_code': {
       const lang = args.language as string;
       const code = args.code as string;
-      const tmpFile = `/tmp/imzx_code_${Date.now()}.${lang === 'python' ? 'py' : 'mjs'}`;
+      const tmpDir = await fs.mkdtemp('/tmp/imzx_code_');
+      const tmpFile = `${tmpDir}/code.${lang === 'python' ? 'py' : 'mjs'}`;
       try {
         await fs.writeFile(tmpFile, code, 'utf-8');
-        const cmd = lang === 'python' ? `python3 ${tmpFile}` : `node ${tmpFile}`;
-        // [C6 FIX] Allowlist env vars instead of blacklist — only pass safe subset
+        const execFn = lang === 'python' ? 'python3' : 'node';
+        const { execFileSync } = await import('node:child_process');
         const safeEnv: Record<string, string> = {
           PATH: process.env.PATH || '',
           HOME: '/tmp',
-          TMPDIR: '/tmp',
+          TMPDIR: tmpDir,
           TERM: 'dumb',
           LANG: process.env.LANG || 'en_US.UTF-8',
           NODE_OPTIONS: '',
           ELECTRON_RUN_AS_NODE: '',
         };
-        const output = execSync(cmd, {
+        const output = execFileSync(execFn, [tmpFile], {
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
           encoding: 'utf-8',
@@ -627,7 +628,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       } catch (err: any) {
         return `Code error: ${err.stderr || err.message}`.substring(0, 5000);
       } finally {
-        try { await fs.unlink(tmpFile); } catch {}
+        try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch {}
       }
     }
 

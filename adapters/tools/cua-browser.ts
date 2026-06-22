@@ -58,7 +58,7 @@ export class CuaBrowser {
   constructor(config: BrowserConfig = {}) {
     this.config = {
       screenshotDir: config.screenshotDir || join(process.cwd(), '.imzx', 'screenshots'),
-      userAgent: config.userAgent || 'imzx-agent-sdk/0.6.1 (compatible)',
+      userAgent: config.userAgent || 'imzx-agent-sdk/0.8.2 (compatible)',
       timeoutMs: config.timeoutMs ?? 15_000,
     };
     mkdirSync(this.config.screenshotDir, { recursive: true });

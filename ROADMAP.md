@@ -1,6 +1,6 @@
 1|# imzx-agent-sdk Roadmap
 2|
-3|**Current Version**: v0.7.0
+3|**Current Version**: v0.8.2
 4|**Architecture**: Rust core (NAPI-RS) + TypeScript orchestration + Clean Architecture
 5|**Last Updated**: 2026-06-21
 6|
